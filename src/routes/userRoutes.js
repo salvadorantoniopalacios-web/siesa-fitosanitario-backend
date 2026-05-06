@@ -18,35 +18,35 @@ const router = express.Router();
 router.get(
   "/",
   verificarToken,
-  permitirRoles("Admin"),
+  permitirRoles("admin", "Admin"),
   getUsers
 );
 
 router.post(
   "/",
   verificarToken,
-  permitirRoles("Admin"),
+  permitirRoles("admin", "Admin"),
   createUser
 );
 
 router.put(
   "/:id",
   verificarToken,
-  permitirRoles("Admin"),
+  permitirRoles("admin", "Admin"),
   updateUser
 );
 
 router.patch(
   "/:id/toggle-status",
   verificarToken,
-  permitirRoles("Admin"),
+  permitirRoles("admin", "Admin"),
   toggleUserStatus
 );
 
 router.delete(
   "/:id",
   verificarToken,
-  permitirRoles("Admin"),
+  permitirRoles("admin", "Admin"),
   deleteUser
 );
 
