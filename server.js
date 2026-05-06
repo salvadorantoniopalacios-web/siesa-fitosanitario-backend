@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import bcrypt from "bcryptjs";
 import pool from "./src/config/db.js";
 
 import authRoutes from "./src/routes/authRoutes.js";
@@ -55,6 +56,59 @@ app.get("/", async (req, res) => {
   } catch (error) {
     res.status(500).json({
       mensaje: "Error conectando a BD",
+      error: error.message,
+    });
+  }
+});
+
+/*
+========================================
+RESET ADMIN TEMPORAL
+========================================
+*/
+app.get("/reset-admin", async (req, res) => {
+  try {
+    const passwordHash = await bcrypt.hash("123456", 10);
+
+    const existe = await pool.query(
+      "SELECT * FROM users WHERE email = $1",
+      ["admin@siesa.com"]
+    );
+
+    if (existe.rows.length > 0) {
+      await pool.query(
+        `
+        UPDATE users
+        SET password = $1
+        WHERE email = $2
+        `,
+        [passwordHash, "admin@siesa.com"]
+      );
+
+      return res.json({
+        mensaje: "Contraseña actualizada",
+        email: "admin@siesa.com",
+        password: "123456",
+      });
+    }
+
+    await pool.query(
+      `
+      INSERT INTO users
+      (nombre, email, password, rol)
+      VALUES ($1, $2, $3, $4)
+      `,
+      ["Administrador", "admin@siesa.com", passwordHash, "admin"]
+    );
+
+    res.json({
+      mensaje: "Usuario admin creado",
+      email: "admin@siesa.com",
+      password: "123456",
+    });
+  } catch (error) {
+    res.status(500).json({
+      mensaje: "Error creando admin",
       error: error.message,
     });
   }
