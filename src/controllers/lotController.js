@@ -24,6 +24,7 @@ export const getLots = async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error("ERROR GET LOTS:", error);
+
     res.status(500).json({
       mensaje: "Error obteniendo lotes",
       error: error.message,
@@ -39,11 +40,27 @@ export const createLot = async (req, res) => {
     const farm_id = req.body.farm_id || req.body.finca_id;
     const cultivo = req.body.cultivo;
     const variedad = req.body.variedad || null;
-    const area_hectareas = req.body.area_hectareas || req.body.area || null;
+
+    const area_hectareas =
+      req.body.area_hectareas || req.body.area || null;
+
     const fecha_siembra = req.body.fecha_siembra || null;
+
     const estado = req.body.estado || "Activo";
-    const latitud = req.body.latitud || null;
-    const longitud = req.body.longitud || null;
+
+    const latitud =
+      req.body.latitud !== undefined &&
+      req.body.latitud !== null &&
+      req.body.latitud !== ""
+        ? Number(req.body.latitud)
+        : null;
+
+    const longitud =
+      req.body.longitud !== undefined &&
+      req.body.longitud !== null &&
+      req.body.longitud !== ""
+        ? Number(req.body.longitud)
+        : null;
 
     if (!codigo || !farm_id || !cultivo) {
       return res.status(400).json({
@@ -51,9 +68,10 @@ export const createLot = async (req, res) => {
       });
     }
 
-    const fincaExiste = await pool.query("SELECT id FROM farms WHERE id = $1", [
-      Number(farm_id),
-    ]);
+    const fincaExiste = await pool.query(
+      "SELECT id FROM farms WHERE id = $1",
+      [Number(farm_id)]
+    );
 
     if (fincaExiste.rows.length === 0) {
       return res.status(400).json({
@@ -63,19 +81,18 @@ export const createLot = async (req, res) => {
 
     const result = await pool.query(
       `
-      INSERT INTO lots 
-      (
-        codigo, 
-        farm_id, 
-        cultivo, 
-        variedad, 
-        area_hectareas, 
-        fecha_siembra, 
+      INSERT INTO lots (
+        codigo,
+        farm_id,
+        cultivo,
+        variedad,
+        area_hectareas,
+        fecha_siembra,
         estado,
         latitud,
         longitud
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       RETURNING *
       `,
       [
@@ -83,17 +100,16 @@ export const createLot = async (req, res) => {
         Number(farm_id),
         cultivo,
         variedad,
-        area_hectareas && !isNaN(area_hectareas)
+
+        area_hectareas &&
+        !isNaN(area_hectareas)
           ? Number(area_hectareas)
           : null,
+
         fecha_siembra,
         estado,
-        latitud !== "" && latitud !== null && latitud !== undefined
-          ? Number(latitud)
-          : null,
-        longitud !== "" && longitud !== null && longitud !== undefined
-          ? Number(longitud)
-          : null,
+        latitud,
+        longitud,
       ]
     );
 
@@ -121,11 +137,27 @@ export const updateLot = async (req, res) => {
     const farm_id = req.body.farm_id || req.body.finca_id;
     const cultivo = req.body.cultivo;
     const variedad = req.body.variedad || null;
-    const area_hectareas = req.body.area_hectareas || req.body.area || null;
+
+    const area_hectareas =
+      req.body.area_hectareas || req.body.area || null;
+
     const fecha_siembra = req.body.fecha_siembra || null;
+
     const estado = req.body.estado || "Activo";
-    const latitud = req.body.latitud || null;
-    const longitud = req.body.longitud || null;
+
+    const latitud =
+      req.body.latitud !== undefined &&
+      req.body.latitud !== null &&
+      req.body.latitud !== ""
+        ? Number(req.body.latitud)
+        : null;
+
+    const longitud =
+      req.body.longitud !== undefined &&
+      req.body.longitud !== null &&
+      req.body.longitud !== ""
+        ? Number(req.body.longitud)
+        : null;
 
     if (!codigo || !farm_id || !cultivo) {
       return res.status(400).json({
@@ -133,9 +165,10 @@ export const updateLot = async (req, res) => {
       });
     }
 
-    const fincaExiste = await pool.query("SELECT id FROM farms WHERE id = $1", [
-      Number(farm_id),
-    ]);
+    const fincaExiste = await pool.query(
+      "SELECT id FROM farms WHERE id = $1",
+      [Number(farm_id)]
+    );
 
     if (fincaExiste.rows.length === 0) {
       return res.status(400).json({
@@ -146,7 +179,7 @@ export const updateLot = async (req, res) => {
     const result = await pool.query(
       `
       UPDATE lots
-      SET 
+      SET
         codigo = $1,
         farm_id = $2,
         cultivo = $3,
@@ -164,17 +197,16 @@ export const updateLot = async (req, res) => {
         Number(farm_id),
         cultivo,
         variedad,
-        area_hectareas && !isNaN(area_hectareas)
+
+        area_hectareas &&
+        !isNaN(area_hectareas)
           ? Number(area_hectareas)
           : null,
+
         fecha_siembra,
         estado,
-        latitud !== "" && latitud !== null && latitud !== undefined
-          ? Number(latitud)
-          : null,
-        longitud !== "" && longitud !== null && longitud !== undefined
-          ? Number(longitud)
-          : null,
+        latitud,
+        longitud,
         id,
       ]
     );
