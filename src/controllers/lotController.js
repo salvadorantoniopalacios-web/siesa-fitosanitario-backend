@@ -13,6 +13,8 @@ export const getLots = async (req, res) => {
         l.area_hectareas,
         l.fecha_siembra,
         l.estado,
+        l.latitud,
+        l.longitud,
         l.creado_en
       FROM lots l
       LEFT JOIN farms f ON l.farm_id = f.id
@@ -40,6 +42,8 @@ export const createLot = async (req, res) => {
     const area_hectareas = req.body.area_hectareas || req.body.area || null;
     const fecha_siembra = req.body.fecha_siembra || null;
     const estado = req.body.estado || "Activo";
+    const latitud = req.body.latitud || null;
+    const longitud = req.body.longitud || null;
 
     if (!codigo || !farm_id || !cultivo) {
       return res.status(400).json({
@@ -60,8 +64,18 @@ export const createLot = async (req, res) => {
     const result = await pool.query(
       `
       INSERT INTO lots 
-      (codigo, farm_id, cultivo, variedad, area_hectareas, fecha_siembra, estado)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      (
+        codigo, 
+        farm_id, 
+        cultivo, 
+        variedad, 
+        area_hectareas, 
+        fecha_siembra, 
+        estado,
+        latitud,
+        longitud
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
       `,
       [
@@ -74,6 +88,12 @@ export const createLot = async (req, res) => {
           : null,
         fecha_siembra,
         estado,
+        latitud !== "" && latitud !== null && latitud !== undefined
+          ? Number(latitud)
+          : null,
+        longitud !== "" && longitud !== null && longitud !== undefined
+          ? Number(longitud)
+          : null,
       ]
     );
 
@@ -104,6 +124,8 @@ export const updateLot = async (req, res) => {
     const area_hectareas = req.body.area_hectareas || req.body.area || null;
     const fecha_siembra = req.body.fecha_siembra || null;
     const estado = req.body.estado || "Activo";
+    const latitud = req.body.latitud || null;
+    const longitud = req.body.longitud || null;
 
     if (!codigo || !farm_id || !cultivo) {
       return res.status(400).json({
@@ -131,8 +153,10 @@ export const updateLot = async (req, res) => {
         variedad = $4,
         area_hectareas = $5,
         fecha_siembra = $6,
-        estado = $7
-      WHERE id = $8
+        estado = $7,
+        latitud = $8,
+        longitud = $9
+      WHERE id = $10
       RETURNING *
       `,
       [
@@ -145,6 +169,12 @@ export const updateLot = async (req, res) => {
           : null,
         fecha_siembra,
         estado,
+        latitud !== "" && latitud !== null && latitud !== undefined
+          ? Number(latitud)
+          : null,
+        longitud !== "" && longitud !== null && longitud !== undefined
+          ? Number(longitud)
+          : null,
         id,
       ]
     );
