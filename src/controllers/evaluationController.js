@@ -51,6 +51,35 @@ const normalizarNumero = (valor) => {
   return Number.isNaN(numero) ? null : numero;
 };
 
+const parsearPlagas = (texto) => {
+  if (!texto) return [];
+
+  const partes = String(texto)
+    .split("|")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return partes.map((item) => {
+    const limpio = item.replace(/^\d+\.\s*/, "").trim();
+
+    const match = limpio.match(/^(.*?)\s*\(([\d.]+)%\s*-\s*(.*?)\)$/);
+
+    if (match) {
+      return {
+        plaga: match[1].trim(),
+        incidencia: match[2].trim(),
+        severidad: match[3].trim(),
+      };
+    }
+
+    return {
+      plaga: limpio,
+      incidencia: "",
+      severidad: "",
+    };
+  });
+};
+
 export const getEvaluations = async (req, res) => {
   try {
     const result = await pool.query(`
@@ -92,9 +121,6 @@ export const createEvaluation = async (req, res) => {
     } = req.body;
 
     const foto_url = obtenerFotoUrl(req);
-
-    console.log("DATA EVALUATION:", req.body);
-    console.log("FOTO EVALUATION:", foto_url);
 
     if (
       !fecha ||
@@ -338,6 +364,7 @@ export const generateEvaluationPdf = async (req, res) => {
 
     const evaluacion = result.rows[0];
     const colorRiesgo = obtenerColorRiesgo(evaluacion.nivel_riesgo);
+    const plagas = parsearPlagas(evaluacion.plaga_enfermedad);
 
     const doc = new PDFDocument({
       size: "A4",
@@ -386,9 +413,11 @@ export const generateEvaluationPdf = async (req, res) => {
         .fillColor("#111827")
         .fontSize(10)
         .font("Helvetica")
-        .text(valor || "Sin información", 190, y);
+        .text(valor || "Sin información", 190, y, {
+          width: 340,
+        });
 
-      y += 24;
+      y += 22;
     };
 
     agregarFila("Fecha:", formatearFecha(evaluacion.fecha));
@@ -400,9 +429,6 @@ export const generateEvaluationPdf = async (req, res) => {
     );
     agregarFila("Lote:", evaluacion.lote);
     agregarFila("Cultivo:", evaluacion.cultivo || evaluacion.cultivo_principal);
-    agregarFila("Plaga / Enfermedad:", evaluacion.plaga_enfermedad);
-    agregarFila("Incidencia:", `${evaluacion.incidencia}%`);
-    agregarFila("Severidad:", evaluacion.severidad);
     agregarFila(
       "GPS evaluación:",
       evaluacion.latitud && evaluacion.longitud
@@ -410,21 +436,97 @@ export const generateEvaluationPdf = async (req, res) => {
         : "Sin GPS registrado"
     );
 
-    doc.roundedRect(45, y + 5, 505, 54, 8).fillAndStroke("#f8fafc", "#cbd5e1");
+    y += 10;
+
+    doc
+      .fillColor("#0f172a")
+      .fontSize(15)
+      .font("Helvetica-Bold")
+      .text("Detalle de plagas o enfermedades", 45, y);
+
+    y += 25;
+
+    doc.roundedRect(45, y, 505, 26, 6).fill("#e2e8f0");
+
+    doc
+      .fillColor("#0f172a")
+      .fontSize(9)
+      .font("Helvetica-Bold")
+      .text("No.", 55, y + 8, { width: 35 })
+      .text("Plaga / Enfermedad", 90, y + 8, { width: 250 })
+      .text("Incidencia", 355, y + 8, { width: 80, align: "center" })
+      .text("Severidad", 445, y + 8, { width: 80, align: "center" });
+
+    y += 26;
+
+    if (plagas.length > 0) {
+      plagas.forEach((item, index) => {
+        const altoFila = 28;
+
+        doc.roundedRect(45, y, 505, altoFila, 2).strokeColor("#e2e8f0").stroke();
+
+        doc
+          .fillColor("#334155")
+          .fontSize(9)
+          .font("Helvetica")
+          .text(String(index + 1), 55, y + 9, { width: 35 })
+          .text(item.plaga || "-", 90, y + 9, { width: 250 })
+          .text(item.incidencia ? `${item.incidencia}%` : "-", 355, y + 9, {
+            width: 80,
+            align: "center",
+          })
+          .text(item.severidad || "-", 445, y + 9, {
+            width: 80,
+            align: "center",
+          });
+
+        y += altoFila;
+      });
+    } else {
+      doc
+        .fillColor("#64748b")
+        .fontSize(10)
+        .font("Helvetica")
+        .text("Sin detalle de plagas registrado.", 55, y + 10);
+
+      y += 30;
+    }
+
+    y += 12;
+
+    doc.roundedRect(45, y, 505, 62, 8).fillAndStroke("#f8fafc", "#cbd5e1");
 
     doc
       .fillColor("#334155")
-      .fontSize(11)
+      .fontSize(10)
       .font("Helvetica-Bold")
-      .text("Nivel de riesgo", 65, y + 22);
+      .text("Promedio de incidencia:", 65, y + 16);
 
-    doc.roundedRect(390, y + 16, 130, 28, 14).fill(colorRiesgo);
+    doc
+      .fillColor("#111827")
+      .fontSize(10)
+      .font("Helvetica")
+      .text(`${evaluacion.incidencia}%`, 205, y + 16);
+
+    doc
+      .fillColor("#334155")
+      .fontSize(10)
+      .font("Helvetica-Bold")
+      .text("Severidad global:", 65, y + 38);
+
+    doc
+      .fillColor("#111827")
+      .fontSize(10)
+      .font("Helvetica")
+      .text(evaluacion.severidad || "Sin información", 205, y + 38);
+
+    doc.roundedRect(390, y + 17, 130, 30, 15).fill(colorRiesgo);
 
     doc
       .fillColor("#ffffff")
       .fontSize(12)
       .font("Helvetica-Bold")
-      .text(evaluacion.nivel_riesgo || "Sin riesgo", 390, y + 24, {
+      .text(evaluacion.nivel_riesgo || "Sin riesgo", 390, y + 26, {
         width: 130,
         align: "center",
       });
@@ -439,7 +541,7 @@ export const generateEvaluationPdf = async (req, res) => {
 
     y += 25;
 
-    doc.roundedRect(45, y, 505, 90, 8).strokeColor("#cbd5e1").stroke();
+    doc.roundedRect(45, y, 505, 85, 8).strokeColor("#cbd5e1").stroke();
 
     doc
       .fillColor("#111827")
@@ -455,7 +557,7 @@ export const generateEvaluationPdf = async (req, res) => {
         }
       );
 
-    y += 120;
+    y += 115;
 
     doc
       .fillColor("#0f172a")
@@ -474,7 +576,7 @@ export const generateEvaluationPdf = async (req, res) => {
       if (fs.existsSync(rutaFoto)) {
         try {
           doc.image(rutaFoto, 45, y, {
-            fit: [260, 180],
+            fit: [260, 160],
             align: "center",
             valign: "center",
           });
