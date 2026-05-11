@@ -15,8 +15,19 @@ const calcularNivelRiesgo = (incidencia, severidad) => {
 };
 
 const obtenerFotoUrl = (req) => {
-  if (!req.file) return null;
-  return `/uploads/${req.file.filename}`;
+  if (req.file) return `/uploads/${req.file.filename}`;
+
+  if (req.files?.foto?.[0]) {
+    return `/uploads/${req.files.foto[0].filename}`;
+  }
+
+  return null;
+};
+
+const obtenerFotosPlagas = (req) => {
+  if (!req.files?.fotos_plagas) return [];
+
+  return req.files.fotos_plagas.map((file) => `/uploads/${file.filename}`);
 };
 
 const obtenerColorRiesgo = (nivel) => {
@@ -50,6 +61,27 @@ const normalizarNumero = (valor) => {
   return Number.isNaN(numero) ? null : numero;
 };
 
+const prepararTextoPlagasConFotos = (plagaEnfermedad, fotosPlagas) => {
+  if (!plagaEnfermedad || fotosPlagas.length === 0) {
+    return plagaEnfermedad;
+  }
+
+  const partes = String(plagaEnfermedad)
+    .split("|")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return partes
+    .map((item, index) => {
+      const foto = fotosPlagas[index];
+
+      if (!foto) return item;
+
+      return `${item} [foto:${foto}]`;
+    })
+    .join(" | ");
+};
+
 const parsearPlagas = (texto) => {
   if (!texto) return [];
 
@@ -59,7 +91,11 @@ const parsearPlagas = (texto) => {
     .filter(Boolean);
 
   return partes.map((item) => {
-    const limpio = item.replace(/^\d+\.\s*/, "").trim();
+    const fotoMatch = item.match(/\[foto:(.*?)\]/);
+    const foto_url = fotoMatch ? fotoMatch[1].trim() : null;
+
+    const sinFoto = item.replace(/\[foto:.*?\]/, "").trim();
+    const limpio = sinFoto.replace(/^\d+\.\s*/, "").trim();
 
     const match = limpio.match(/^(.*?)\s*\(([\d.]+)%\s*-\s*(.*?)\)$/);
 
@@ -68,6 +104,7 @@ const parsearPlagas = (texto) => {
         plaga: match[1].trim(),
         incidencia: match[2].trim(),
         severidad: match[3].trim(),
+        foto_url,
       };
     }
 
@@ -75,6 +112,7 @@ const parsearPlagas = (texto) => {
       plaga: limpio,
       incidencia: "",
       severidad: "",
+      foto_url,
     };
   });
 };
@@ -120,12 +158,17 @@ export const createEvaluation = async (req, res) => {
     } = req.body;
 
     const foto_url = obtenerFotoUrl(req);
+    const fotosPlagas = obtenerFotosPlagas(req);
+    const plaga_enfermedad_final = prepararTextoPlagasConFotos(
+      plaga_enfermedad,
+      fotosPlagas
+    );
 
     if (
       !fecha ||
       !farm_id ||
       !lot_id ||
-      !plaga_enfermedad ||
+      !plaga_enfermedad_final ||
       incidencia === "" ||
       incidencia === null ||
       incidencia === undefined ||
@@ -162,7 +205,7 @@ export const createEvaluation = async (req, res) => {
         fecha,
         Number(farm_id),
         Number(lot_id),
-        plaga_enfermedad,
+        plaga_enfermedad_final,
         Number(incidencia),
         severidad,
         nivel_riesgo,
@@ -207,12 +250,17 @@ export const updateEvaluation = async (req, res) => {
     } = req.body;
 
     const nuevaFotoUrl = obtenerFotoUrl(req);
+    const fotosPlagas = obtenerFotosPlagas(req);
+    const plaga_enfermedad_final = prepararTextoPlagasConFotos(
+      plaga_enfermedad,
+      fotosPlagas
+    );
 
     if (
       !fecha ||
       !farm_id ||
       !lot_id ||
-      !plaga_enfermedad ||
+      !plaga_enfermedad_final ||
       incidencia === "" ||
       incidencia === null ||
       incidencia === undefined ||
@@ -265,7 +313,7 @@ export const updateEvaluation = async (req, res) => {
         fecha,
         Number(farm_id),
         Number(lot_id),
-        plaga_enfermedad,
+        plaga_enfermedad_final,
         Number(incidencia),
         severidad,
         nivel_riesgo,
@@ -452,9 +500,10 @@ export const generateEvaluationPdf = async (req, res) => {
       .fontSize(9)
       .font("Helvetica-Bold")
       .text("No.", 55, y + 8, { width: 35 })
-      .text("Plaga / Enfermedad", 90, y + 8, { width: 250 })
-      .text("Incidencia", 355, y + 8, { width: 80, align: "center" })
-      .text("Severidad", 445, y + 8, { width: 80, align: "center" });
+      .text("Plaga / Enfermedad", 90, y + 8, { width: 210 })
+      .text("Incidencia", 315, y + 8, { width: 75, align: "center" })
+      .text("Severidad", 395, y + 8, { width: 75, align: "center" })
+      .text("Foto", 475, y + 8, { width: 60, align: "center" });
 
     y += 26;
 
@@ -469,13 +518,17 @@ export const generateEvaluationPdf = async (req, res) => {
           .fontSize(9)
           .font("Helvetica")
           .text(String(index + 1), 55, y + 9, { width: 35 })
-          .text(item.plaga || "-", 90, y + 9, { width: 250 })
-          .text(item.incidencia ? `${item.incidencia}%` : "-", 355, y + 9, {
-            width: 80,
+          .text(item.plaga || "-", 90, y + 9, { width: 210 })
+          .text(item.incidencia ? `${item.incidencia}%` : "-", 315, y + 9, {
+            width: 75,
             align: "center",
           })
-          .text(item.severidad || "-", 445, y + 9, {
-            width: 80,
+          .text(item.severidad || "-", 395, y + 9, {
+            width: 75,
+            align: "center",
+          })
+          .text(item.foto_url ? "Sí" : "No", 475, y + 9, {
+            width: 60,
             align: "center",
           });
 
@@ -562,7 +615,7 @@ export const generateEvaluationPdf = async (req, res) => {
       .fillColor("#0f172a")
       .fontSize(15)
       .font("Helvetica-Bold")
-      .text("Evidencia fotográfica", 45, y);
+      .text("Evidencia fotográfica general", 45, y);
 
     y += 25;
 
@@ -575,7 +628,7 @@ export const generateEvaluationPdf = async (req, res) => {
       if (fs.existsSync(rutaFoto)) {
         try {
           doc.image(rutaFoto, 45, y, {
-            fit: [260, 160],
+            fit: [240, 140],
             align: "center",
             valign: "center",
           });
@@ -584,7 +637,7 @@ export const generateEvaluationPdf = async (req, res) => {
             .fillColor("#b91c1c")
             .fontSize(10)
             .font("Helvetica")
-            .text("No se pudo cargar la imagen en el PDF.", 45, y);
+            .text("No se pudo cargar la imagen general en el PDF.", 45, y);
         }
       } else {
         doc
@@ -592,7 +645,7 @@ export const generateEvaluationPdf = async (req, res) => {
           .fontSize(10)
           .font("Helvetica")
           .text(
-            "La evaluación tiene foto registrada, pero el archivo no fue encontrado.",
+            "La evaluación tiene foto general registrada, pero el archivo no fue encontrado.",
             45,
             y
           );
@@ -602,34 +655,87 @@ export const generateEvaluationPdf = async (req, res) => {
         .fillColor("#64748b")
         .fontSize(10)
         .font("Helvetica")
-        .text(
-          "Esta evaluación no tiene evidencia fotográfica registrada.",
-          45,
-          y
-        );
+        .text("Esta evaluación no tiene foto general registrada.", 45, y);
+    }
+
+    const plagasConFoto = plagas.filter((p) => p.foto_url);
+
+    if (plagasConFoto.length > 0) {
+      doc.addPage();
+      y = 45;
+
+      doc
+        .fillColor("#0f172a")
+        .fontSize(16)
+        .font("Helvetica-Bold")
+        .text("Evidencia fotográfica por plaga", 45, y);
+
+      y += 35;
+
+      plagasConFoto.forEach((plaga, index) => {
+        const rutaFoto = path.join(process.cwd(), plaga.foto_url.replace("/", ""));
+
+        doc
+          .fillColor("#0f172a")
+          .fontSize(12)
+          .font("Helvetica-Bold")
+          .text(`${index + 1}. ${plaga.plaga}`, 45, y);
+
+        y += 18;
+
+        doc
+          .fillColor("#334155")
+          .fontSize(9)
+          .font("Helvetica")
+          .text(`Incidencia: ${plaga.incidencia}% | Severidad: ${plaga.severidad}`, 45, y);
+
+        y += 15;
+
+        if (fs.existsSync(rutaFoto)) {
+          try {
+            doc.image(rutaFoto, 45, y, {
+              fit: [250, 150],
+            });
+          } catch (error) {
+            doc
+              .fillColor("#b91c1c")
+              .fontSize(10)
+              .font("Helvetica")
+              .text("No se pudo cargar la foto de esta plaga.", 45, y);
+          }
+        } else {
+          doc
+            .fillColor("#64748b")
+            .fontSize(10)
+            .font("Helvetica")
+            .text("Foto no encontrada en servidor.", 45, y);
+        }
+
+        y += 185;
+
+        if (y > 650 && index < plagasConFoto.length - 1) {
+          doc.addPage();
+          y = 45;
+        }
+      });
     }
 
     doc
       .fillColor("#0f172a")
       .fontSize(13)
       .font("Helvetica-Bold")
-      .text("Responsable", 340, y);
+      .text("Responsable", 340, 685);
 
-    doc.moveTo(340, y + 70).lineTo(535, y + 70).strokeColor("#94a3b8").stroke();
+    doc.moveTo(340, 755).lineTo(535, 755).strokeColor("#94a3b8").stroke();
 
     doc
       .fillColor("#111827")
       .fontSize(10)
       .font("Helvetica")
-      .text(
-        evaluacion.responsable || "Sin responsable registrado",
-        340,
-        y + 78,
-        {
-          width: 195,
-          align: "center",
-        }
-      );
+      .text(evaluacion.responsable || "Sin responsable registrado", 340, 763, {
+        width: 195,
+        align: "center",
+      });
 
     doc
       .fillColor("#64748b")

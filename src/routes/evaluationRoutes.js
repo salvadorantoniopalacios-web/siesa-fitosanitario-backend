@@ -23,7 +23,10 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const extension = path.extname(file.originalname);
-    const nombreArchivo = `evaluacion-${Date.now()}${extension}`;
+    const nombreArchivo = `evaluacion-${Date.now()}-${Math.round(
+      Math.random() * 1e9
+    )}${extension}`;
+
     cb(null, nombreArchivo);
   },
 });
@@ -46,6 +49,11 @@ const upload = multer({
   },
 });
 
+const uploadEvaluacion = upload.fields([
+  { name: "foto", maxCount: 1 },
+  { name: "fotos_plagas", maxCount: 20 },
+]);
+
 router.get(
   "/",
   verificarToken,
@@ -64,7 +72,7 @@ router.post(
   "/",
   verificarToken,
   permitirRoles("Admin", "Técnico"),
-  upload.single("foto"),
+  uploadEvaluacion,
   createEvaluation
 );
 
@@ -72,7 +80,7 @@ router.put(
   "/:id",
   verificarToken,
   permitirRoles("Admin", "Técnico"),
-  upload.single("foto"),
+  uploadEvaluacion,
   updateEvaluation
 );
 
