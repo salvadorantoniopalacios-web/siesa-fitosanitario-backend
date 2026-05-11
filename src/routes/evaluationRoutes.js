@@ -21,8 +21,10 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "uploads/");
   },
+
   filename: (req, file, cb) => {
     const extension = path.extname(file.originalname);
+
     const nombreArchivo = `evaluacion-${Date.now()}-${Math.round(
       Math.random() * 1e9
     )}${extension}`;
@@ -32,7 +34,12 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const tiposPermitidos = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
+  const tiposPermitidos = [
+    "image/jpeg",
+    "image/png",
+    "image/jpg",
+    "image/webp",
+  ];
 
   if (tiposPermitidos.includes(file.mimetype)) {
     cb(null, true);
