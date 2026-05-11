@@ -32,13 +32,12 @@ const obtenerColorRiesgo = (nivel) => {
 const formatearFecha = (fecha) => {
   if (!fecha) return "Sin fecha";
 
-  const date = new Date(fecha);
+  const fechaTexto = String(fecha).substring(0, 10);
+  const [year, month, day] = fechaTexto.split("-");
 
-  return date.toLocaleDateString("es-GT", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
+  if (!year || !month || !day) return "Sin fecha";
+
+  return `${day}/${month}/${year}`;
 };
 
 const normalizarNumero = (valor) => {
