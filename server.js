@@ -14,6 +14,7 @@ import dashboardRoutes from "./src/routes/dashboardRoutes.js";
 import alertRoutes from "./src/routes/alertRoutes.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import catalogRoutes from "./src/routes/catalogRoutes.js";
+import applicationRoutes from "./src/routes/applicationRoutes.js";
 
 dotenv.config();
 
@@ -123,6 +124,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/alerts", alertRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/catalog", catalogRoutes);
+app.use("/api/applications", applicationRoutes);
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
