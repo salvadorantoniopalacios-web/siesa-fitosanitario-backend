@@ -19,7 +19,7 @@ import {
 const router = express.Router();
 
 const uploadsDir = path.join(process.cwd(), "uploads");
-
+console.log("📁 Evaluaciones guardarán fotos en:", uploadsDir);
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }

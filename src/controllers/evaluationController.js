@@ -3,6 +3,8 @@ import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
 
+const uploadsDir = path.join(process.cwd(), "uploads");
+
 const calcularNivelRiesgo = (incidencia, severidad) => {
   const valor = Number(incidencia);
   const sev = String(severidad || "").toLowerCase();
@@ -12,6 +14,14 @@ const calcularNivelRiesgo = (incidencia, severidad) => {
   if (valor >= 10 || sev === "media") return "Medio";
 
   return "Bajo";
+};
+
+const obtenerRutaFisicaFoto = (fotoUrl) => {
+  if (!fotoUrl) return null;
+
+  const nombreArchivo = path.basename(String(fotoUrl));
+
+  return path.join(uploadsDir, nombreArchivo);
 };
 
 const obtenerFotoUrl = (req) => {
@@ -144,6 +154,14 @@ export const getEvaluations = async (req, res) => {
 
 export const createEvaluation = async (req, res) => {
   try {
+    console.log("=================================");
+    console.log("CREATE EVALUATION - FILES RECIBIDOS:");
+    console.log(req.files);
+    console.log("CREATE EVALUATION - BODY RECIBIDO:");
+    console.log(req.body);
+    console.log("UPLOADS DIR:", uploadsDir);
+    console.log("=================================");
+
     const {
       fecha,
       farm_id,
@@ -163,6 +181,9 @@ export const createEvaluation = async (req, res) => {
       plaga_enfermedad,
       fotosPlagas
     );
+
+    console.log("FOTO GENERAL GUARDADA COMO:", foto_url);
+    console.log("FOTOS PLAGAS GUARDADAS COMO:", fotosPlagas);
 
     if (
       !fecha ||
@@ -234,6 +255,14 @@ export const createEvaluation = async (req, res) => {
 
 export const updateEvaluation = async (req, res) => {
   try {
+    console.log("=================================");
+    console.log("UPDATE EVALUATION - FILES RECIBIDOS:");
+    console.log(req.files);
+    console.log("UPDATE EVALUATION - BODY RECIBIDO:");
+    console.log(req.body);
+    console.log("UPLOADS DIR:", uploadsDir);
+    console.log("=================================");
+
     const { id } = req.params;
 
     const {
@@ -620,12 +649,9 @@ export const generateEvaluationPdf = async (req, res) => {
     y += 25;
 
     if (evaluacion.foto_url) {
-      const rutaFoto = path.join(
-        process.cwd(),
-        evaluacion.foto_url.replace("/", "")
-      );
+      const rutaFoto = obtenerRutaFisicaFoto(evaluacion.foto_url);
 
-      if (fs.existsSync(rutaFoto)) {
+      if (rutaFoto && fs.existsSync(rutaFoto)) {
         try {
           doc.image(rutaFoto, 45, y, {
             fit: [240, 140],
@@ -673,7 +699,7 @@ export const generateEvaluationPdf = async (req, res) => {
       y += 35;
 
       plagasConFoto.forEach((plaga, index) => {
-        const rutaFoto = path.join(process.cwd(), plaga.foto_url.replace("/", ""));
+        const rutaFoto = obtenerRutaFisicaFoto(plaga.foto_url);
 
         doc
           .fillColor("#0f172a")
@@ -687,11 +713,15 @@ export const generateEvaluationPdf = async (req, res) => {
           .fillColor("#334155")
           .fontSize(9)
           .font("Helvetica")
-          .text(`Incidencia: ${plaga.incidencia}% | Severidad: ${plaga.severidad}`, 45, y);
+          .text(
+            `Incidencia: ${plaga.incidencia}% | Severidad: ${plaga.severidad}`,
+            45,
+            y
+          );
 
         y += 15;
 
-        if (fs.existsSync(rutaFoto)) {
+        if (rutaFoto && fs.existsSync(rutaFoto)) {
           try {
             doc.image(rutaFoto, 45, y, {
               fit: [250, 150],
