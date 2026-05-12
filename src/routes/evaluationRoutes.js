@@ -19,13 +19,22 @@ import {
 const router = express.Router();
 
 const uploadsDir = path.join(process.cwd(), "uploads");
+
 console.log("📁 Evaluaciones guardarán fotos en:", uploadsDir);
+
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log("✅ Carpeta uploads creada:", uploadsDir);
 }
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    console.log("📥 Multer recibió archivo:");
+    console.log("Campo:", file.fieldname);
+    console.log("Nombre original:", file.originalname);
+    console.log("Tipo:", file.mimetype);
+    console.log("Destino:", uploadsDir);
+
     cb(null, uploadsDir);
   },
 
@@ -35,6 +44,8 @@ const storage = multer.diskStorage({
     const nombreArchivo = `evaluacion-${Date.now()}-${Math.round(
       Math.random() * 1e9
     )}${extension}`;
+
+    console.log("📝 Nombre generado para guardar:", nombreArchivo);
 
     cb(null, nombreArchivo);
   },
@@ -68,6 +79,27 @@ const uploadEvaluacion = upload.fields([
   { name: "fotos_plagas", maxCount: 20 },
 ]);
 
+const manejarUploadEvaluacion = (req, res, next) => {
+  uploadEvaluacion(req, res, (error) => {
+    if (error) {
+      console.error("❌ Error en multer:", error.message);
+
+      return res.status(400).json({
+        mensaje: "Error al subir la imagen",
+        error: error.message,
+      });
+    }
+
+    console.log("✅ req.files recibido por backend:");
+    console.log(req.files);
+
+    console.log("✅ req.body recibido por backend:");
+    console.log(req.body);
+
+    next();
+  });
+};
+
 router.get(
   "/",
   verificarToken,
@@ -86,7 +118,7 @@ router.post(
   "/",
   verificarToken,
   permitirRoles("Admin", "Técnico"),
-  uploadEvaluacion,
+  manejarUploadEvaluacion,
   createEvaluation
 );
 
@@ -94,7 +126,7 @@ router.put(
   "/:id",
   verificarToken,
   permitirRoles("Admin", "Técnico"),
-  uploadEvaluacion,
+  manejarUploadEvaluacion,
   updateEvaluation
 );
 
