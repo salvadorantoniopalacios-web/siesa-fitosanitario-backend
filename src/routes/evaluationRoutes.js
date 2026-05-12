@@ -20,36 +20,25 @@ const router = express.Router();
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 
-console.log("📁 Evaluaciones guardarán fotos en:", uploadsDir);
+console.log("📁 Carpeta local uploads disponible como respaldo:", uploadsDir);
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
   console.log("✅ Carpeta uploads creada:", uploadsDir);
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    console.log("📥 Multer recibió archivo:");
-    console.log("Campo:", file.fieldname);
-    console.log("Nombre original:", file.originalname);
-    console.log("Tipo:", file.mimetype);
-    console.log("Destino:", uploadsDir);
+/*
+========================================
+MULTER PARA CLOUDINARY
+========================================
+No se eliminan rutas ni permisos.
+Antes: multer.diskStorage guardaba en /uploads.
+Ahora: multer.memoryStorage guarda temporalmente en memoria
+para enviar el archivo a Cloudinary desde el controller.
+========================================
+*/
 
-    cb(null, uploadsDir);
-  },
-
-  filename: (req, file, cb) => {
-    const extension = path.extname(file.originalname).toLowerCase();
-
-    const nombreArchivo = `evaluacion-${Date.now()}-${Math.round(
-      Math.random() * 1e9
-    )}${extension}`;
-
-    console.log("📝 Nombre generado para guardar:", nombreArchivo);
-
-    cb(null, nombreArchivo);
-  },
-});
+const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
   const tiposPermitidos = [
@@ -95,6 +84,18 @@ const manejarUploadEvaluacion = (req, res, next) => {
 
     console.log("✅ req.body recibido por backend:");
     console.log(req.body);
+
+    if (req.files?.foto?.[0]) {
+      console.log("📥 Foto general recibida:");
+      console.log("Campo:", req.files.foto[0].fieldname);
+      console.log("Nombre original:", req.files.foto[0].originalname);
+      console.log("Tipo:", req.files.foto[0].mimetype);
+      console.log("Tamaño:", req.files.foto[0].size);
+    }
+
+    if (req.files?.fotos_plagas?.length > 0) {
+      console.log("📥 Fotos de plagas recibidas:", req.files.fotos_plagas.length);
+    }
 
     next();
   });

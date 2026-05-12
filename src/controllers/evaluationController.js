@@ -2,6 +2,7 @@ import pool from "../config/db.js";
 import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
+import cloudinary from "../config/cloudinary.js";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 
@@ -16,28 +17,97 @@ const calcularNivelRiesgo = (incidencia, severidad) => {
   return "Bajo";
 };
 
+const subirImagenCloudinary = (file, carpeta = "siesa-fitosanitario/evaluaciones") => {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.buffer) {
+      resolve(null);
+      return;
+    }
+
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: carpeta,
+        resource_type: "image",
+      },
+      (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(result.secure_url);
+      }
+    );
+
+    stream.end(file.buffer);
+  });
+};
+
 const obtenerRutaFisicaFoto = (fotoUrl) => {
   if (!fotoUrl) return null;
+
+  if (String(fotoUrl).startsWith("http")) {
+    return null;
+  }
 
   const nombreArchivo = path.basename(String(fotoUrl));
 
   return path.join(uploadsDir, nombreArchivo);
 };
 
-const obtenerFotoUrl = (req) => {
-  if (req.file) return `/uploads/${req.file.filename}`;
+const obtenerFuenteImagen = async (fotoUrl) => {
+  if (!fotoUrl) return null;
 
-  if (req.files?.foto?.[0]) {
-    return `/uploads/${req.files.foto[0].filename}`;
+  if (String(fotoUrl).startsWith("http")) {
+    const respuesta = await fetch(fotoUrl);
+
+    if (!respuesta.ok) {
+      return null;
+    }
+
+    const arrayBuffer = await respuesta.arrayBuffer();
+
+    return Buffer.from(arrayBuffer);
+  }
+
+  const rutaFoto = obtenerRutaFisicaFoto(fotoUrl);
+
+  if (rutaFoto && fs.existsSync(rutaFoto)) {
+    return rutaFoto;
   }
 
   return null;
 };
 
-const obtenerFotosPlagas = (req) => {
+const obtenerFotoUrl = async (req) => {
+  if (req.file) {
+    return await subirImagenCloudinary(req.file);
+  }
+
+  if (req.files?.foto?.[0]) {
+    return await subirImagenCloudinary(req.files.foto[0]);
+  }
+
+  return null;
+};
+
+const obtenerFotosPlagas = async (req) => {
   if (!req.files?.fotos_plagas) return [];
 
-  return req.files.fotos_plagas.map((file) => `/uploads/${file.filename}`);
+  const urls = [];
+
+  for (const file of req.files.fotos_plagas) {
+    const url = await subirImagenCloudinary(
+      file,
+      "siesa-fitosanitario/evaluaciones/plagas"
+    );
+
+    if (url) {
+      urls.push(url);
+    }
+  }
+
+  return urls;
 };
 
 const obtenerColorRiesgo = (nivel) => {
@@ -159,7 +229,6 @@ export const createEvaluation = async (req, res) => {
     console.log(req.files);
     console.log("CREATE EVALUATION - BODY RECIBIDO:");
     console.log(req.body);
-    console.log("UPLOADS DIR:", uploadsDir);
     console.log("=================================");
 
     const {
@@ -175,15 +244,16 @@ export const createEvaluation = async (req, res) => {
       longitud,
     } = req.body;
 
-    const foto_url = obtenerFotoUrl(req);
-    const fotosPlagas = obtenerFotosPlagas(req);
+    const foto_url = await obtenerFotoUrl(req);
+    const fotosPlagas = await obtenerFotosPlagas(req);
+
     const plaga_enfermedad_final = prepararTextoPlagasConFotos(
       plaga_enfermedad,
       fotosPlagas
     );
 
-    console.log("FOTO GENERAL GUARDADA COMO:", foto_url);
-    console.log("FOTOS PLAGAS GUARDADAS COMO:", fotosPlagas);
+    console.log("FOTO GENERAL CLOUDINARY:", foto_url);
+    console.log("FOTOS PLAGAS CLOUDINARY:", fotosPlagas);
 
     if (
       !fecha ||
@@ -260,7 +330,6 @@ export const updateEvaluation = async (req, res) => {
     console.log(req.files);
     console.log("UPDATE EVALUATION - BODY RECIBIDO:");
     console.log(req.body);
-    console.log("UPLOADS DIR:", uploadsDir);
     console.log("=================================");
 
     const { id } = req.params;
@@ -278,8 +347,9 @@ export const updateEvaluation = async (req, res) => {
       longitud,
     } = req.body;
 
-    const nuevaFotoUrl = obtenerFotoUrl(req);
-    const fotosPlagas = obtenerFotosPlagas(req);
+    const nuevaFotoUrl = await obtenerFotoUrl(req);
+    const fotosPlagas = await obtenerFotosPlagas(req);
+
     const plaga_enfermedad_final = prepararTextoPlagasConFotos(
       plaga_enfermedad,
       fotosPlagas
@@ -649,11 +719,11 @@ export const generateEvaluationPdf = async (req, res) => {
     y += 25;
 
     if (evaluacion.foto_url) {
-      const rutaFoto = obtenerRutaFisicaFoto(evaluacion.foto_url);
+      const fuenteFoto = await obtenerFuenteImagen(evaluacion.foto_url);
 
-      if (rutaFoto && fs.existsSync(rutaFoto)) {
+      if (fuenteFoto) {
         try {
-          doc.image(rutaFoto, 45, y, {
+          doc.image(fuenteFoto, 45, y, {
             fit: [240, 140],
             align: "center",
             valign: "center",
@@ -698,8 +768,9 @@ export const generateEvaluationPdf = async (req, res) => {
 
       y += 35;
 
-      plagasConFoto.forEach((plaga, index) => {
-        const rutaFoto = obtenerRutaFisicaFoto(plaga.foto_url);
+      for (let index = 0; index < plagasConFoto.length; index++) {
+        const plaga = plagasConFoto[index];
+        const fuenteFoto = await obtenerFuenteImagen(plaga.foto_url);
 
         doc
           .fillColor("#0f172a")
@@ -721,9 +792,9 @@ export const generateEvaluationPdf = async (req, res) => {
 
         y += 15;
 
-        if (rutaFoto && fs.existsSync(rutaFoto)) {
+        if (fuenteFoto) {
           try {
-            doc.image(rutaFoto, 45, y, {
+            doc.image(fuenteFoto, 45, y, {
               fit: [250, 150],
             });
           } catch (error) {
@@ -747,7 +818,7 @@ export const generateEvaluationPdf = async (req, res) => {
           doc.addPage();
           y = 45;
         }
-      });
+      }
     }
 
     doc
