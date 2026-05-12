@@ -23,6 +23,8 @@ const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const uploadsPath = path.join(__dirname, "uploads");
+
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
@@ -45,15 +47,18 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+console.log("Uploads servido desde:", uploadsPath);
+app.use("/uploads", express.static(uploadsPath));
 
 app.get("/", async (req, res) => {
   try {
     const result = await pool.query("SELECT NOW()");
+
     res.json({
       mensaje: "Backend SIESA conectado a BD",
       ambiente: process.env.NODE_ENV || "development",
       hora_servidor: result.rows[0].now,
+      uploads: uploadsPath,
     });
   } catch (error) {
     res.status(500).json({
@@ -100,7 +105,7 @@ app.get("/reset-admin", async (req, res) => {
       (nombre, email, password, rol)
       VALUES ($1, $2, $3, $4)
       `,
-      ["Administrador", "admin@siesa.com", passwordHash, "admin"]
+      ["Administrador", "admin@siesa.com", passwordHash, "Admin"]
     );
 
     res.json({
@@ -125,6 +130,7 @@ app.use("/api/alerts", alertRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/catalog", catalogRoutes);
 app.use("/api/applications", applicationRoutes);
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
