@@ -25,7 +25,7 @@ export const analizarImagenFitosanitaria = async (req, res) => {
     const imagenBase64 = convertirImagenABase64(req.file);
 
     const respuesta = await openai.responses.create({
-      model: "gpt-4.1-mini"
+      model: "gpt-4.1-mini",
       input: [
         {
           role: "user",
