@@ -1,8 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const client = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+// Inicialización con la librería oficial
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const convertirImagenABase64 = (file) => {
   return file.buffer.toString("base64");
@@ -14,37 +13,38 @@ export const analizarImagenFitosanitaria = async (req, res) => {
       return res.status(400).json({ mensaje: "Debe enviar una imagen." });
     }
 
+    // Usamos gemini-1.5-flash (el estándar que sí tiene cuota en Guatemala)
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
     const imagenBase64 = convertirImagenABase64(req.file);
 
-    // 1. Usamos 'gemini-1.5-flash-latest' para forzar que la API lo encuentre
-    const respuestaIA = await client.models.generateContent({
-      model: "gemini-1.5-flash-latest", 
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: "Analiza esta imagen fitosanitaria. Responde en español con un análisis técnico breve y recomendaciones."
-            },
-            {
-              inlineData: {
-                mimeType: req.file.mimetype,
-                data: imagenBase64,
-              },
-            },
-          ],
-        },
-      ],
-    });
+    const prompt = `
+Analiza esta imagen fitosanitaria. Responde en español.
+Formato:
+Posible observación:
+Confianza estimada:
+Señales visibles:
+Recomendación técnica:
+Advertencia: Validar con un técnico.
+`;
 
-    // 2. Forma correcta de sacar el texto en tu versión de librería
-    const textoFinal = respuestaIA.text || 
-                       respuestaIA.candidates?.[0]?.content?.parts?.[0]?.text || 
-                       "No se pudo generar el análisis.";
+    // Generar contenido con la sintaxis correcta
+    const result = await model.generateContent([
+      prompt,
+      {
+        inlineData: {
+          data: imagenBase64,
+          mimeType: req.file.mimetype,
+        },
+      },
+    ]);
+
+    const response = await result.response;
+    const text = response.text();
 
     res.json({
       mensaje: "Imagen analizada correctamente",
-      resultado: textoFinal,
+      resultado: text,
     });
 
   } catch (error) {
