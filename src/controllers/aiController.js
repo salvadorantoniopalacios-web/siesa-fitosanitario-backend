@@ -1,8 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+// Configuración del cliente
+const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY);
 
 const convertirImagenABase64 = (file) => {
   return file.buffer.toString("base64");
@@ -10,6 +9,7 @@ const convertirImagenABase64 = (file) => {
 
 export const analizarImagenFitosanitaria = async (req, res) => {
   try {
+    // 1. Validaciones iniciales
     if (!req.file) {
       return res.status(400).json({
         mensaje: "Debe enviar una imagen para analizar.",
@@ -22,18 +22,14 @@ export const analizarImagenFitosanitaria = async (req, res) => {
       });
     }
 
+    // 2. Definir el modelo correctamente (Usa 1.5 Flash para evitar el error de cuota 429)
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
     const imagenBase64 = convertirImagenABase64(req.file);
 
-    const respuesta = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: `
+    // 3. Estructurar el contenido para la IA
+    const prompt = `
 Analiza esta imagen agrícola o fitosanitaria.
-
 Responde en español y con enfoque técnico, pero claro.
 
 IMPORTANTE:
@@ -50,25 +46,39 @@ Confianza estimada:
 Señales visibles:
 Recomendación técnica:
 Advertencia:
-              `,
-            },
-            {
-              inlineData: {
-                mimeType: req.file.mimetype,
-                data: imagenBase64,
-              },
-            },
-          ],
-        },
-      ],
-    });
+`;
 
+    const partes = [
+      { text: prompt },
+      {
+        inlineData: {
+          mimeType: req.file.mimetype,
+          data: imagenBase64,
+        },
+      },
+    ];
+
+    // 4. Ejecutar la generación de contenido
+    const resultadoIA = await model.generateContent(partes);
+    const respuesta = await resultadoIA.response;
+    const texto = respuesta.text();
+
+    // 5. Enviar respuesta al frontend
     res.json({
       mensaje: "Imagen analizada correctamente",
-      resultado: respuesta.text || "No se obtuvo respuesta de Gemini.",
+      resultado: texto || "No se obtuvo respuesta de Gemini.",
     });
+
   } catch (error) {
     console.error("ERROR ANALIZANDO IMAGEN IA:", error);
+
+    // Manejo específico de errores de cuota (429)
+    if (error.status === 429) {
+        return res.status(429).json({
+            mensaje: "Se ha agotado el límite gratuito momentáneamente. Intenta en 1 minuto.",
+            error: error.message
+        });
+    }
 
     res.status(500).json({
       mensaje: "Error analizando imagen con IA",
