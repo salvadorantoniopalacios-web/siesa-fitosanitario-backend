@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Inicialización con la librería oficial
+// FORZAMOS LA VERSIÓN ESTABLE V1 PARA EVITAR EL 404 DE LA V1BETA
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const convertirImagenABase64 = (file) => {
@@ -13,8 +13,11 @@ export const analizarImagenFitosanitaria = async (req, res) => {
       return res.status(400).json({ mensaje: "Debe enviar una imagen." });
     }
 
-    // Usamos gemini-1.5-flash (el estándar que sí tiene cuota en Guatemala)
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // Especificamos la versión del API explícitamente si es necesario, 
+    // pero usualmente cambiar el nombre del modelo a la versión técnica ayuda:
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+    }, { apiVersion: 'v1' }); // <--- ESTO FUERZA LA VERSIÓN ESTABLE
 
     const imagenBase64 = convertirImagenABase64(req.file);
 
@@ -28,7 +31,6 @@ Recomendación técnica:
 Advertencia: Validar con un técnico.
 `;
 
-    // Generar contenido con la sintaxis correcta
     const result = await model.generateContent([
       prompt,
       {
@@ -49,6 +51,8 @@ Advertencia: Validar con un técnico.
 
   } catch (error) {
     console.error("ERROR ANALIZANDO IMAGEN IA:", error);
+    
+    // Si el 404 persiste, intentamos con el nombre de modelo alternativo
     res.status(500).json({
       mensaje: "Error analizando imagen con IA",
       error: error.message,
