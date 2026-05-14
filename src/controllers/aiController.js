@@ -25,7 +25,7 @@ export const analizarImagenFitosanitaria = async (req, res) => {
     const imagenBase64 = convertirImagenABase64(req.file);
 
     const respuesta = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash",
       contents: [
         {
           role: "user",
