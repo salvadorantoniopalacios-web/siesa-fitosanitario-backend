@@ -1,6 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
 
-// 1. Configuración del cliente según tu versión 2.2.0
 const client = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
@@ -15,28 +14,17 @@ export const analizarImagenFitosanitaria = async (req, res) => {
       return res.status(400).json({ mensaje: "Debe enviar una imagen." });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ mensaje: "Falta la API Key." });
-    }
-
     const imagenBase64 = convertirImagenABase64(req.file);
 
-    // 2. LA CLAVE: En esta versión se llama así para evitar el 404
-    // Se usa el método models.generateContent directamente
+    // 1. Usamos 'gemini-1.5-flash-latest' para forzar que la API lo encuentre
     const respuestaIA = await client.models.generateContent({
-      model: "gemini-1.5-flash", 
+      model: "gemini-1.5-flash-latest", 
       contents: [
         {
           role: "user",
           parts: [
             {
-              text: `Analiza esta imagen fitosanitaria. Responde en español.
-              Formato:
-              Posible observación:
-              Confianza estimada:
-              Señales visibles:
-              Recomendación técnica:
-              Advertencia: Validar con técnico.`
+              text: "Analiza esta imagen fitosanitaria. Responde en español con un análisis técnico breve y recomendaciones."
             },
             {
               inlineData: {
@@ -49,9 +37,10 @@ export const analizarImagenFitosanitaria = async (req, res) => {
       ],
     });
 
-    // 3. Extraer el texto correctamente
-    // En la 2.2.0, el texto viene en esta propiedad:
-    const textoFinal = respuestaIA.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo generar el análisis.";
+    // 2. Forma correcta de sacar el texto en tu versión de librería
+    const textoFinal = respuestaIA.text || 
+                       respuestaIA.candidates?.[0]?.content?.parts?.[0]?.text || 
+                       "No se pudo generar el análisis.";
 
     res.json({
       mensaje: "Imagen analizada correctamente",
@@ -60,9 +49,7 @@ export const analizarImagenFitosanitaria = async (req, res) => {
 
   } catch (error) {
     console.error("ERROR ANALIZANDO IMAGEN IA:", error);
-    
-    // Si sigue dando 404, es un tema de la región del servidor
-    res.status(error.status || 500).json({
+    res.status(500).json({
       mensaje: "Error analizando imagen con IA",
       error: error.message,
     });
