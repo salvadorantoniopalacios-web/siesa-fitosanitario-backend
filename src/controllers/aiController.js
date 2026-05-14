@@ -1,6 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// FORZAMOS LA VERSIÓN ESTABLE V1 PARA EVITAR EL 404 DE LA V1BETA
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const convertirImagenABase64 = (file) => {
@@ -13,11 +12,11 @@ export const analizarImagenFitosanitaria = async (req, res) => {
       return res.status(400).json({ mensaje: "Debe enviar una imagen." });
     }
 
-    // Especificamos la versión del API explícitamente si es necesario, 
-    // pero usualmente cambiar el nombre del modelo a la versión técnica ayuda:
+    // USAMOS EL MODELO CON EL NOMBRE TÉCNICO COMPLETO
+    // Esto suele forzar a la API a encontrarlo cuando el nombre corto falla
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-    }, { apiVersion: 'v1' }); // <--- ESTO FUERZA LA VERSIÓN ESTABLE
+      model: "gemini-1.5-flash-001" 
+    });
 
     const imagenBase64 = convertirImagenABase64(req.file);
 
@@ -31,12 +30,13 @@ Recomendación técnica:
 Advertencia: Validar con un técnico.
 `;
 
+    // Pasamos los datos en el formato más básico y directo posible
     const result = await model.generateContent([
-      prompt,
+      { text: prompt },
       {
         inlineData: {
-          data: imagenBase64,
           mimeType: req.file.mimetype,
+          data: imagenBase64,
         },
       },
     ]);
@@ -51,8 +51,8 @@ Advertencia: Validar con un técnico.
 
   } catch (error) {
     console.error("ERROR ANALIZANDO IMAGEN IA:", error);
-    
-    // Si el 404 persiste, intentamos con el nombre de modelo alternativo
+
+    // Si el 404 sigue, te daré la solución final para configurar el proyecto en Google Cloud
     res.status(500).json({
       mensaje: "Error analizando imagen con IA",
       error: error.message,
