@@ -1,9 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// 1. Inicializamos la IA con la configuración de objeto que pide la nueva SDK
-const client = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+// 1. Inicialización con la librería estándar (la más estable)
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const convertirImagenABase64 = (file) => {
   return file.buffer.toString("base64");
@@ -15,50 +13,51 @@ export const analizarImagenFitosanitaria = async (req, res) => {
       return res.status(400).json({ mensaje: "Debe enviar una imagen." });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ mensaje: "Falta la API Key en el servidor." });
-    }
+    // 2. Usamos el modelo 1.5 Flash (Gratis en Guatemala)
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const imagenBase64 = convertirImagenABase64(req.file);
 
-    // 2. EN ESTA SDK: Se usa client.models.generateContent directamente
-    // Usamos gemini-1.5-flash porque es el que tiene cuota gratis para Guatemala
-    const respuestaIA = await client.models.generateContent({
-      model: "gemini-1.5-flash", 
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: `Analiza esta imagen agrícola. Responde en español. 
-              Formato:
-              Posible observación:
-              Confianza estimada:
-              Señales visibles:
-              Recomendación técnica:
-              Advertencia: Debe ser validado por un técnico.`
-            },
-            {
-              inlineData: {
-                mimeType: req.file.mimetype,
-                data: imagenBase64,
-              },
-            },
-          ],
-        },
-      ],
-    });
+    const prompt = `
+Analiza esta imagen fitosanitaria. Responde en español.
+Formato:
+Posible observación:
+Confianza estimada:
+Señales visibles:
+Recomendación técnica:
+Advertencia: Validar con técnico.
+`;
 
-    // 3. Extraer el texto (en la versión 2026 es directo)
-    const textoFinal = respuestaIA.text || "No se pudo generar el análisis.";
+    // 3. Estructura de envío de imagen clásica
+    const result = await model.generateContent([
+      prompt,
+      {
+        inlineData: {
+          data: imagenBase64,
+          mimeType: req.file.mimetype,
+        },
+      },
+    ]);
+
+    const response = await result.response;
+    const text = response.text();
 
     res.json({
       mensaje: "Imagen analizada correctamente",
-      resultado: textoFinal,
+      resultado: text,
     });
 
   } catch (error) {
     console.error("ERROR ANALIZANDO IMAGEN IA:", error);
+    
+    // Si da 404, es que Google quiere que uses el nombre técnico largo
+    if (error.message.includes("404")) {
+        return res.status(404).json({
+            mensaje: "Error de configuración de modelo.",
+            sugerencia: "Prueba cambiando el modelo a 'gemini-1.5-flash-latest' en el código."
+        });
+    }
+
     res.status(500).json({
       mensaje: "Error analizando imagen con IA",
       error: error.message,
