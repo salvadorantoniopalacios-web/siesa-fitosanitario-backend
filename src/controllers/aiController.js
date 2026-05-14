@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
-// 1. Instanciamos la IA
-const ai = new GoogleGenAI({
+// 1. Inicializamos la IA con la configuración de objeto que pide la nueva SDK
+const client = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
@@ -12,50 +12,32 @@ const convertirImagenABase64 = (file) => {
 export const analizarImagenFitosanitaria = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({
-        mensaje: "Debe enviar una imagen para analizar.",
-      });
+      return res.status(400).json({ mensaje: "Debe enviar una imagen." });
     }
 
     if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({
-        mensaje: "No está configurada la API Key de Gemini en el backend.",
-      });
+      return res.status(500).json({ mensaje: "Falta la API Key en el servidor." });
     }
-
-    // 2. Accedemos al modelo correctamente para la versión @google/genai
-    // Usamos gemini-1.5-flash que es el que tiene cuota gratis activa para Guatemala
-    const model = ai.models.get("gemini-1.5-flash");
 
     const imagenBase64 = convertirImagenABase64(req.file);
 
-    const prompt = `
-Analiza esta imagen agrícola o fitosanitaria.
-Responde en español y con enfoque técnico, pero claro.
-
-IMPORTANTE:
-- No des un diagnóstico definitivo.
-- Presenta el resultado como una posible observación visual.
-- Indica que debe ser validado por un técnico responsable.
-- Si la imagen no permite identificar nada, dilo claramente.
-- No inventes una plaga si la imagen no tiene suficiente evidencia.
-
-Devuelve este formato:
-
-Posible observación:
-Confianza estimada:
-Señales visibles:
-Recomendación técnica:
-Advertencia:
-`;
-
-    // 3. Ejecutamos la consulta
-    const respuestaIA = await model.generateContent({
+    // 2. EN ESTA SDK: Se usa client.models.generateContent directamente
+    // Usamos gemini-1.5-flash porque es el que tiene cuota gratis para Guatemala
+    const respuestaIA = await client.models.generateContent({
+      model: "gemini-1.5-flash", 
       contents: [
         {
           role: "user",
           parts: [
-            { text: prompt },
+            {
+              text: `Analiza esta imagen agrícola. Responde en español. 
+              Formato:
+              Posible observación:
+              Confianza estimada:
+              Señales visibles:
+              Recomendación técnica:
+              Advertencia: Debe ser validado por un técnico.`
+            },
             {
               inlineData: {
                 mimeType: req.file.mimetype,
@@ -67,18 +49,16 @@ Advertencia:
       ],
     });
 
-    // 4. Extraemos el texto del resultado
-    // En esta SDK, el texto está directamente en response.text
-    const textoFinal = respuestaIA.response.text;
+    // 3. Extraer el texto (en la versión 2026 es directo)
+    const textoFinal = respuestaIA.text || "No se pudo generar el análisis.";
 
     res.json({
       mensaje: "Imagen analizada correctamente",
-      resultado: textoFinal || "No se obtuvo respuesta de Gemini.",
+      resultado: textoFinal,
     });
 
   } catch (error) {
     console.error("ERROR ANALIZANDO IMAGEN IA:", error);
-
     res.status(500).json({
       mensaje: "Error analizando imagen con IA",
       error: error.message,
