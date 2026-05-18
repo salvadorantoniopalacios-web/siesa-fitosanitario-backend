@@ -68,23 +68,32 @@ const optimizarUrlCloudinary = (fotoUrl) => {
 };
 
 const obtenerFuenteImagen = async (fotoUrl) => {
-  if (!fotoUrl) return null;
+  try {
+    if (!fotoUrl) return null;
 
-  if (String(fotoUrl).startsWith("http")) {
-    console.log(
-      "PDF rápido: imagen remota no incrustada para evitar lentitud:",
-      fotoUrl
-    );
+    if (String(fotoUrl).startsWith("http")) {
+      const respuesta = await fetch(fotoUrl);
+
+      if (!respuesta.ok) {
+        return null;
+      }
+
+      const arrayBuffer = await respuesta.arrayBuffer();
+
+      return Buffer.from(arrayBuffer);
+    }
+
+    const rutaFoto = obtenerRutaFisicaFoto(fotoUrl);
+
+    if (rutaFoto && fs.existsSync(rutaFoto)) {
+      return rutaFoto;
+    }
+
+    return null;
+  } catch (error) {
+    console.log("Error cargando imagen PDF:", error.message);
     return null;
   }
-
-  const rutaFoto = obtenerRutaFisicaFoto(fotoUrl);
-
-  if (rutaFoto && fs.existsSync(rutaFoto)) {
-    return rutaFoto;
-  }
-
-  return null;
 };
 
 const obtenerFotoUrl = async (req) => {
@@ -753,7 +762,7 @@ export const generateEvaluationPdf = async (req, res) => {
       if (fuenteFoto) {
         try {
           doc.image(fuenteFoto, 45, y, {
-            fit: [240, 140],
+            fit: [180, 110],
             align: "center",
             valign: "center",
           });
@@ -824,7 +833,7 @@ export const generateEvaluationPdf = async (req, res) => {
         if (fuenteFoto) {
           try {
             doc.image(fuenteFoto, 45, y, {
-              fit: [250, 150],
+              fit: [180, 110],
             });
           } catch (error) {
             doc
