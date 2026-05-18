@@ -55,19 +55,45 @@ const obtenerRutaFisicaFoto = (fotoUrl) => {
   return path.join(uploadsDir, nombreArchivo);
 };
 
+const optimizarUrlCloudinary = (fotoUrl) => {
+  if (!fotoUrl) return fotoUrl;
+
+  const url = String(fotoUrl);
+
+  if (url.includes("res.cloudinary.com") && url.includes("/upload/")) {
+    return url.replace("/upload/", "/upload/c_limit,w_1200,q_auto,f_auto/");
+  }
+
+  return url;
+};
+
 const obtenerFuenteImagen = async (fotoUrl) => {
   if (!fotoUrl) return null;
 
   if (String(fotoUrl).startsWith("http")) {
-    const respuesta = await fetch(fotoUrl);
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
 
-    if (!respuesta.ok) {
+      const urlOptimizada = optimizarUrlCloudinary(fotoUrl);
+
+      const respuesta = await fetch(urlOptimizada, {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!respuesta.ok) {
+        return null;
+      }
+
+      const arrayBuffer = await respuesta.arrayBuffer();
+
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      console.error("No se pudo cargar imagen para PDF:", error.message);
       return null;
     }
-
-    const arrayBuffer = await respuesta.arrayBuffer();
-
-    return Buffer.from(arrayBuffer);
   }
 
   const rutaFoto = obtenerRutaFisicaFoto(fotoUrl);
@@ -123,12 +149,33 @@ const obtenerColorRiesgo = (nivel) => {
 const formatearFecha = (fecha) => {
   if (!fecha) return "Sin fecha";
 
-  const fechaTexto = String(fecha).substring(0, 10);
-  const [year, month, day] = fechaTexto.split("-");
+  if (fecha instanceof Date) {
+    const day = String(fecha.getUTCDate()).padStart(2, "0");
+    const month = String(fecha.getUTCMonth() + 1).padStart(2, "0");
+    const year = fecha.getUTCFullYear();
 
-  if (!year || !month || !day) return "Sin fecha";
+    return `${day}/${month}/${year}`;
+  }
 
-  return `${day}/${month}/${year}`;
+  const fechaTexto = String(fecha);
+
+  const matchIso = fechaTexto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (matchIso) {
+    return `${matchIso[3]}/${matchIso[2]}/${matchIso[1]}`;
+  }
+
+  const fechaParseada = new Date(fechaTexto);
+
+  if (!Number.isNaN(fechaParseada.getTime())) {
+    const day = String(fechaParseada.getUTCDate()).padStart(2, "0");
+    const month = String(fechaParseada.getUTCMonth() + 1).padStart(2, "0");
+    const year = fechaParseada.getUTCFullYear();
+
+    return `${day}/${month}/${year}`;
+  }
+
+  return "Sin fecha";
 };
 
 const normalizarNumero = (valor) => {
