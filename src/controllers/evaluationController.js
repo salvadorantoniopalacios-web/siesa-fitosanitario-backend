@@ -71,30 +71,18 @@ const obtenerFuenteImagen = async (fotoUrl) => {
   if (!fotoUrl) return null;
 
   if (String(fotoUrl).startsWith("http")) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-
-      const urlOptimizada = optimizarUrlCloudinary(fotoUrl);
-
-      const respuesta = await fetch(urlOptimizada, {
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      if (!respuesta.ok) {
-        return null;
-      }
-
-      const arrayBuffer = await respuesta.arrayBuffer();
-
-      return Buffer.from(arrayBuffer);
-    } catch (error) {
-      console.error("No se pudo cargar imagen para PDF:", error.message);
-      return null;
-    }
+    console.log("PDF rápido: imagen Cloudinary no se incrusta para evitar lentitud:", fotoUrl);
+    return null;
   }
+
+  const rutaFoto = obtenerRutaFisicaFoto(fotoUrl);
+
+  if (rutaFoto && fs.existsSync(rutaFoto)) {
+    return rutaFoto;
+  }
+
+  return null;
+};
 
   const rutaFoto = obtenerRutaFisicaFoto(fotoUrl);
 
