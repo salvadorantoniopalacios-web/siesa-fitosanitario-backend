@@ -756,41 +756,48 @@ export const generateEvaluationPdf = async (req, res) => {
 
     y += 25;
 
-    if (evaluacion.foto_url) {
-      const fuenteFoto = await obtenerFuenteImagen(evaluacion.foto_url);
+const fotoGeneralOPorPlaga =
+  evaluacion.foto_url || plagas.find((p) => p.foto_url)?.foto_url || null;
 
-      if (fuenteFoto) {
-        try {
-          doc.image(fuenteFoto, 45, y, {
-            fit: [180, 110],
-            align: "center",
-            valign: "center",
-          });
-        } catch (imageError) {
-          doc
-            .fillColor("#b91c1c")
-            .fontSize(10)
-            .font("Helvetica")
-            .text("No se pudo cargar la imagen general en el PDF.", 45, y);
-        }
-      } else {
+if (fotoGeneralOPorPlaga) {
+  const fuenteFoto = await obtenerFuenteImagen(fotoGeneralOPorPlaga);
+
+  if (fuenteFoto) {
+    try {
+      doc.image(fuenteFoto, 45, y, {
+        fit: [180, 110],
+        align: "center",
+        valign: "center",
+      });
+
+      if (!evaluacion.foto_url) {
         doc
           .fillColor("#64748b")
-          .fontSize(10)
+          .fontSize(9)
           .font("Helvetica")
-          .text(
-            "La evaluación tiene foto general registrada, pero el archivo no fue encontrado.",
-            45,
-            y
-          );
+          .text("Imagen tomada desde evidencia por plaga.", 45, y + 118);
       }
-    } else {
+    } catch (imageError) {
       doc
-        .fillColor("#64748b")
+        .fillColor("#b91c1c")
         .fontSize(10)
         .font("Helvetica")
-        .text("Esta evaluación no tiene foto general registrada.", 45, y);
+        .text("No se pudo cargar la imagen en el PDF.", 45, y);
     }
+  } else {
+    doc
+      .fillColor("#64748b")
+      .fontSize(10)
+      .font("Helvetica")
+      .text("La evaluación tiene foto registrada, pero no se pudo cargar.", 45, y);
+  }
+} else {
+  doc
+    .fillColor("#64748b")
+    .fontSize(10)
+    .font("Helvetica")
+    .text("Esta evaluación no tiene foto registrada.", 45, y);
+}
 
     const plagasConFoto = plagas.filter((p) => p.foto_url);
 
