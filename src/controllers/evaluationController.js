@@ -71,18 +71,12 @@ const obtenerFuenteImagen = async (fotoUrl) => {
   if (!fotoUrl) return null;
 
   if (String(fotoUrl).startsWith("http")) {
-    console.log("PDF rápido: imagen Cloudinary no se incrusta para evitar lentitud:", fotoUrl);
+    console.log(
+      "PDF rápido: imagen remota no incrustada para evitar lentitud:",
+      fotoUrl
+    );
     return null;
   }
-
-  const rutaFoto = obtenerRutaFisicaFoto(fotoUrl);
-
-  if (rutaFoto && fs.existsSync(rutaFoto)) {
-    return rutaFoto;
-  }
-
-  return null;
-};
 
   const rutaFoto = obtenerRutaFisicaFoto(fotoUrl);
 
