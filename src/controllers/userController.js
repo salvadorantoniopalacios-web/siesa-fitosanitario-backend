@@ -9,16 +9,7 @@ const obtenerCompanyId = (req) => {
 
 export const getUsers = async (req, res) => {
   try {
-    const companyId = obtenerCompanyId(req);
-
-    if (!companyId) {
-      return res.status(400).json({
-        mensaje: "No se pudo identificar la empresa del usuario.",
-      });
-    }
-
-    const result = await pool.query(
-      `
+    const result = await pool.query(`
       SELECT 
         users.id, 
         users.nombre, 
@@ -30,11 +21,8 @@ export const getUsers = async (req, res) => {
         users.creado_en
       FROM users
       LEFT JOIN companies ON companies.id = users.company_id
-      WHERE users.company_id = $1
       ORDER BY users.id DESC
-      `,
-      [companyId]
-    );
+    `);
 
     res.json(result.rows);
   } catch (error) {
@@ -47,24 +35,33 @@ export const getUsers = async (req, res) => {
 
 export const createUser = async (req, res) => {
   try {
-    const companyId = obtenerCompanyId(req);
-    const { nombre, email, password, rol } = req.body;
+    const { nombre, email, password, rol, company_id } = req.body;
 
-    if (!companyId) {
+    if (!nombre || !email || !password || !rol || !company_id) {
       return res.status(400).json({
-        mensaje: "No se pudo identificar la empresa del usuario.",
-      });
-    }
-
-    if (!nombre || !email || !password || !rol) {
-      return res.status(400).json({
-        mensaje: "Nombre, email, contraseña y rol son obligatorios",
+        mensaje: "Nombre, email, contraseña, rol y empresa son obligatorios",
       });
     }
 
     if (!rolesPermitidos.includes(rol)) {
       return res.status(400).json({
         mensaje: "Rol no válido. Use Admin, Técnico o Consulta.",
+      });
+    }
+
+    const empresaExiste = await pool.query(
+      `
+      SELECT id 
+      FROM companies 
+      WHERE id = $1
+      AND activo = true
+      `,
+      [company_id]
+    );
+
+    if (empresaExiste.rows.length === 0) {
+      return res.status(400).json({
+        mensaje: "La empresa seleccionada no existe o está inactiva",
       });
     }
 
@@ -86,7 +83,7 @@ export const createUser = async (req, res) => {
       VALUES ($1, $2, $3, $4, true, $5)
       RETURNING id, nombre, email, rol, activo, company_id, creado_en
       `,
-      [nombre, email, passwordHash, rol, companyId]
+      [nombre, email, passwordHash, rol, company_id]
     );
 
     res.json({
@@ -103,25 +100,34 @@ export const createUser = async (req, res) => {
 
 export const updateUser = async (req, res) => {
   try {
-    const companyId = obtenerCompanyId(req);
     const { id } = req.params;
-    const { nombre, email, rol, password, activo } = req.body;
+    const { nombre, email, rol, password, activo, company_id } = req.body;
 
-    if (!companyId) {
+    if (!nombre || !email || !rol || !company_id) {
       return res.status(400).json({
-        mensaje: "No se pudo identificar la empresa del usuario.",
-      });
-    }
-
-    if (!nombre || !email || !rol) {
-      return res.status(400).json({
-        mensaje: "Nombre, email y rol son obligatorios",
+        mensaje: "Nombre, email, rol y empresa son obligatorios",
       });
     }
 
     if (!rolesPermitidos.includes(rol)) {
       return res.status(400).json({
         mensaje: "Rol no válido. Use Admin, Técnico o Consulta.",
+      });
+    }
+
+    const empresaExiste = await pool.query(
+      `
+      SELECT id 
+      FROM companies 
+      WHERE id = $1
+      AND activo = true
+      `,
+      [company_id]
+    );
+
+    if (empresaExiste.rows.length === 0) {
+      return res.status(400).json({
+        mensaje: "La empresa seleccionada no existe o está inactiva",
       });
     }
 
@@ -145,20 +151,18 @@ export const updateUser = async (req, res) => {
       `
       SELECT id 
       FROM users 
-      WHERE id = $1 
-      AND company_id = $2
+      WHERE id = $1
       `,
-      [id, companyId]
+      [id]
     );
 
     if (usuarioExiste.rows.length === 0) {
       return res.status(404).json({
-        mensaje: "Usuario no encontrado para esta empresa",
+        mensaje: "Usuario no encontrado",
       });
     }
 
-    const activoFinal =
-      activo === true || activo === false ? activo : true;
+    const activoFinal = activo === true || activo === false ? activo : true;
 
     let result;
 
@@ -172,12 +176,12 @@ export const updateUser = async (req, res) => {
             email = $2,
             rol = $3,
             password = $4,
-            activo = $5
-        WHERE id = $6
-        AND company_id = $7
+            activo = $5,
+            company_id = $6
+        WHERE id = $7
         RETURNING id, nombre, email, rol, activo, company_id, creado_en
         `,
-        [nombre, email, rol, passwordHash, activoFinal, id, companyId]
+        [nombre, email, rol, passwordHash, activoFinal, company_id, id]
       );
     } else {
       result = await pool.query(
@@ -186,12 +190,12 @@ export const updateUser = async (req, res) => {
         SET nombre = $1,
             email = $2,
             rol = $3,
-            activo = $4
-        WHERE id = $5
-        AND company_id = $6
+            activo = $4,
+            company_id = $5
+        WHERE id = $6
         RETURNING id, nombre, email, rol, activo, company_id, creado_en
         `,
-        [nombre, email, rol, activoFinal, id, companyId]
+        [nombre, email, rol, activoFinal, company_id, id]
       );
     }
 
@@ -209,14 +213,7 @@ export const updateUser = async (req, res) => {
 
 export const toggleUserStatus = async (req, res) => {
   try {
-    const companyId = obtenerCompanyId(req);
     const { id } = req.params;
-
-    if (!companyId) {
-      return res.status(400).json({
-        mensaje: "No se pudo identificar la empresa del usuario.",
-      });
-    }
 
     if (Number(req.usuario.id) === Number(id)) {
       return res.status(400).json({
@@ -229,15 +226,14 @@ export const toggleUserStatus = async (req, res) => {
       UPDATE users
       SET activo = NOT activo
       WHERE id = $1
-      AND company_id = $2
       RETURNING id, nombre, email, rol, activo, company_id, creado_en
       `,
-      [id, companyId]
+      [id]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
-        mensaje: "Usuario no encontrado para esta empresa",
+        mensaje: "Usuario no encontrado",
       });
     }
 
@@ -257,14 +253,7 @@ export const toggleUserStatus = async (req, res) => {
 
 export const deleteUser = async (req, res) => {
   try {
-    const companyId = obtenerCompanyId(req);
     const { id } = req.params;
-
-    if (!companyId) {
-      return res.status(400).json({
-        mensaje: "No se pudo identificar la empresa del usuario.",
-      });
-    }
 
     if (Number(req.usuario.id) === Number(id)) {
       return res.status(400).json({
@@ -276,15 +265,14 @@ export const deleteUser = async (req, res) => {
       `
       DELETE FROM users
       WHERE id = $1
-      AND company_id = $2
       RETURNING id, nombre, email, rol, activo, company_id, creado_en
       `,
-      [id, companyId]
+      [id]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
-        mensaje: "Usuario no encontrado para esta empresa",
+        mensaje: "Usuario no encontrado",
       });
     }
 
