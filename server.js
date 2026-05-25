@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
+import companyRoutes from "./src/routes/companyRoutes.js";
 import pool from "./src/config/db.js";
 
 import authRoutes from "./src/routes/authRoutes.js";
@@ -131,6 +132,7 @@ app.use("/api/alerts", alertRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/catalog", catalogRoutes);
+app.use("/api/companies", companyRoutes);
 app.use("/api/applications", applicationRoutes);
 
 const PORT = process.env.PORT || 3000;
