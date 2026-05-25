@@ -217,6 +217,53 @@ app.get("/make-superadmin", async (req, res) => {
     });
   }
 });
+/*
+========================================
+DIAGNÓSTICO MULTIEMPRESA
+========================================
+*/
+app.get("/debug-companies-data", async (req, res) => {
+  try {
+    const companies = await pool.query(`
+      SELECT 
+        c.id,
+        c.nombre,
+        c.activo,
+        COUNT(DISTINCT f.id) AS fincas,
+        COUNT(DISTINCT l.id) AS lotes,
+        COUNT(DISTINCT e.id) AS evaluaciones
+      FROM companies c
+      LEFT JOIN farms f ON f.company_id = c.id
+      LEFT JOIN lots l ON l.company_id = c.id
+      LEFT JOIN evaluations e ON e.company_id = c.id
+      GROUP BY c.id, c.nombre, c.activo
+      ORDER BY c.id ASC
+    `);
+
+    const users = await pool.query(`
+      SELECT 
+        u.id,
+        u.nombre,
+        u.email,
+        u.rol,
+        u.company_id,
+        c.nombre AS empresa
+      FROM users u
+      LEFT JOIN companies c ON c.id = u.company_id
+      ORDER BY u.id ASC
+    `);
+
+    res.json({
+      companies: companies.rows,
+      users: users.rows,
+    });
+  } catch (error) {
+    res.status(500).json({
+      mensaje: "Error diagnóstico multiempresa",
+      error: error.message,
+    });
+  }
+});
 app.use("/api/auth", authRoutes);
 app.use("/api/farms", farmRoutes);
 app.use("/api/lots", lotRoutes);
