@@ -3,19 +3,38 @@ import pool from "../config/db.js";
 
 const rolesPermitidos = ["Admin", "Técnico", "Consulta"];
 
+const obtenerCompanyId = (req) => {
+  return req.usuario?.company_id || null;
+};
+
 export const getUsers = async (req, res) => {
   try {
-    const result = await pool.query(`
+    const companyId = obtenerCompanyId(req);
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
+
+    const result = await pool.query(
+      `
       SELECT 
-        id, 
-        nombre, 
-        email, 
-        rol,
-        activo,
-        creado_en
+        users.id, 
+        users.nombre, 
+        users.email, 
+        users.rol,
+        users.activo,
+        users.company_id,
+        companies.nombre AS empresa,
+        users.creado_en
       FROM users
-      ORDER BY id DESC
-    `);
+      LEFT JOIN companies ON companies.id = users.company_id
+      WHERE users.company_id = $1
+      ORDER BY users.id DESC
+      `,
+      [companyId]
+    );
 
     res.json(result.rows);
   } catch (error) {
@@ -28,7 +47,14 @@ export const getUsers = async (req, res) => {
 
 export const createUser = async (req, res) => {
   try {
+    const companyId = obtenerCompanyId(req);
     const { nombre, email, password, rol } = req.body;
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
 
     if (!nombre || !email || !password || !rol) {
       return res.status(400).json({
@@ -56,11 +82,11 @@ export const createUser = async (req, res) => {
 
     const result = await pool.query(
       `
-      INSERT INTO users (nombre, email, password, rol, activo)
-      VALUES ($1, $2, $3, $4, true)
-      RETURNING id, nombre, email, rol, activo, creado_en
+      INSERT INTO users (nombre, email, password, rol, activo, company_id)
+      VALUES ($1, $2, $3, $4, true, $5)
+      RETURNING id, nombre, email, rol, activo, company_id, creado_en
       `,
-      [nombre, email, passwordHash, rol]
+      [nombre, email, passwordHash, rol, companyId]
     );
 
     res.json({
@@ -77,8 +103,15 @@ export const createUser = async (req, res) => {
 
 export const updateUser = async (req, res) => {
   try {
+    const companyId = obtenerCompanyId(req);
     const { id } = req.params;
     const { nombre, email, rol, password, activo } = req.body;
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
 
     if (!nombre || !email || !rol) {
       return res.status(400).json({
@@ -93,13 +126,34 @@ export const updateUser = async (req, res) => {
     }
 
     const existeCorreo = await pool.query(
-      "SELECT id FROM users WHERE email = $1 AND id <> $2",
+      `
+      SELECT id 
+      FROM users 
+      WHERE email = $1 
+      AND id <> $2
+      `,
       [email, id]
     );
 
     if (existeCorreo.rows.length > 0) {
       return res.status(409).json({
         mensaje: "Ya existe otro usuario con este correo",
+      });
+    }
+
+    const usuarioExiste = await pool.query(
+      `
+      SELECT id 
+      FROM users 
+      WHERE id = $1 
+      AND company_id = $2
+      `,
+      [id, companyId]
+    );
+
+    if (usuarioExiste.rows.length === 0) {
+      return res.status(404).json({
+        mensaje: "Usuario no encontrado para esta empresa",
       });
     }
 
@@ -120,9 +174,10 @@ export const updateUser = async (req, res) => {
             password = $4,
             activo = $5
         WHERE id = $6
-        RETURNING id, nombre, email, rol, activo, creado_en
+        AND company_id = $7
+        RETURNING id, nombre, email, rol, activo, company_id, creado_en
         `,
-        [nombre, email, rol, passwordHash, activoFinal, id]
+        [nombre, email, rol, passwordHash, activoFinal, id, companyId]
       );
     } else {
       result = await pool.query(
@@ -133,16 +188,11 @@ export const updateUser = async (req, res) => {
             rol = $3,
             activo = $4
         WHERE id = $5
-        RETURNING id, nombre, email, rol, activo, creado_en
+        AND company_id = $6
+        RETURNING id, nombre, email, rol, activo, company_id, creado_en
         `,
-        [nombre, email, rol, activoFinal, id]
+        [nombre, email, rol, activoFinal, id, companyId]
       );
-    }
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        mensaje: "Usuario no encontrado",
-      });
     }
 
     res.json({
@@ -159,7 +209,14 @@ export const updateUser = async (req, res) => {
 
 export const toggleUserStatus = async (req, res) => {
   try {
+    const companyId = obtenerCompanyId(req);
     const { id } = req.params;
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
 
     if (Number(req.usuario.id) === Number(id)) {
       return res.status(400).json({
@@ -172,14 +229,15 @@ export const toggleUserStatus = async (req, res) => {
       UPDATE users
       SET activo = NOT activo
       WHERE id = $1
-      RETURNING id, nombre, email, rol, activo, creado_en
+      AND company_id = $2
+      RETURNING id, nombre, email, rol, activo, company_id, creado_en
       `,
-      [id]
+      [id, companyId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
-        mensaje: "Usuario no encontrado",
+        mensaje: "Usuario no encontrado para esta empresa",
       });
     }
 
@@ -199,7 +257,14 @@ export const toggleUserStatus = async (req, res) => {
 
 export const deleteUser = async (req, res) => {
   try {
+    const companyId = obtenerCompanyId(req);
     const { id } = req.params;
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
 
     if (Number(req.usuario.id) === Number(id)) {
       return res.status(400).json({
@@ -211,14 +276,15 @@ export const deleteUser = async (req, res) => {
       `
       DELETE FROM users
       WHERE id = $1
-      RETURNING id, nombre, email, rol, activo, creado_en
+      AND company_id = $2
+      RETURNING id, nombre, email, rol, activo, company_id, creado_en
       `,
-      [id]
+      [id, companyId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
-        mensaje: "Usuario no encontrado",
+        mensaje: "Usuario no encontrado para esta empresa",
       });
     }
 

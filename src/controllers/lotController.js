@@ -1,8 +1,31 @@
 import pool from "../config/db.js";
 
+const obtenerCompanyId = (req) => {
+  return req.usuario?.company_id || null;
+};
+
+const normalizarNumero = (valor) => {
+  if (valor === undefined || valor === null || valor === "") {
+    return null;
+  }
+
+  const numero = Number(valor);
+
+  return Number.isNaN(numero) ? null : numero;
+};
+
 export const getLots = async (req, res) => {
   try {
-    const result = await pool.query(`
+    const companyId = obtenerCompanyId(req);
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
+
+    const result = await pool.query(
+      `
       SELECT 
         l.id,
         l.codigo,
@@ -15,11 +38,15 @@ export const getLots = async (req, res) => {
         l.estado,
         l.latitud,
         l.longitud,
+        l.company_id,
         l.creado_en
       FROM lots l
       LEFT JOIN farms f ON l.farm_id = f.id
+      WHERE l.company_id = $1
       ORDER BY l.id DESC
-    `);
+      `,
+      [companyId]
+    );
 
     res.json(result.rows);
   } catch (error) {
@@ -34,33 +61,25 @@ export const getLots = async (req, res) => {
 
 export const createLot = async (req, res) => {
   try {
+    const companyId = obtenerCompanyId(req);
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
+
     console.log("DATA LOTE RECIBIDA:", req.body);
 
     const codigo = req.body.codigo;
     const farm_id = req.body.farm_id || req.body.finca_id;
     const cultivo = req.body.cultivo;
     const variedad = req.body.variedad || null;
-
-    const area_hectareas =
-      req.body.area_hectareas || req.body.area || null;
-
+    const area_hectareas = req.body.area_hectareas || req.body.area || null;
     const fecha_siembra = req.body.fecha_siembra || null;
-
     const estado = req.body.estado || "Activo";
-
-    const latitud =
-      req.body.latitud !== undefined &&
-      req.body.latitud !== null &&
-      req.body.latitud !== ""
-        ? Number(req.body.latitud)
-        : null;
-
-    const longitud =
-      req.body.longitud !== undefined &&
-      req.body.longitud !== null &&
-      req.body.longitud !== ""
-        ? Number(req.body.longitud)
-        : null;
+    const latitud = normalizarNumero(req.body.latitud);
+    const longitud = normalizarNumero(req.body.longitud);
 
     if (!codigo || !farm_id || !cultivo) {
       return res.status(400).json({
@@ -69,13 +88,18 @@ export const createLot = async (req, res) => {
     }
 
     const fincaExiste = await pool.query(
-      "SELECT id FROM farms WHERE id = $1",
-      [Number(farm_id)]
+      `
+      SELECT id 
+      FROM farms 
+      WHERE id = $1
+      AND company_id = $2
+      `,
+      [Number(farm_id), companyId]
     );
 
     if (fincaExiste.rows.length === 0) {
       return res.status(400).json({
-        mensaje: "La finca seleccionada no existe",
+        mensaje: "La finca seleccionada no existe o no pertenece a esta empresa",
       });
     }
 
@@ -90,9 +114,10 @@ export const createLot = async (req, res) => {
         fecha_siembra,
         estado,
         latitud,
-        longitud
+        longitud,
+        company_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING *
       `,
       [
@@ -100,16 +125,12 @@ export const createLot = async (req, res) => {
         Number(farm_id),
         cultivo,
         variedad,
-
-        area_hectareas &&
-        !isNaN(area_hectareas)
-          ? Number(area_hectareas)
-          : null,
-
+        normalizarNumero(area_hectareas),
         fecha_siembra,
         estado,
         latitud,
         longitud,
+        companyId,
       ]
     );
 
@@ -131,33 +152,24 @@ export const createLot = async (req, res) => {
 
 export const updateLot = async (req, res) => {
   try {
+    const companyId = obtenerCompanyId(req);
     const { id } = req.params;
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
 
     const codigo = req.body.codigo;
     const farm_id = req.body.farm_id || req.body.finca_id;
     const cultivo = req.body.cultivo;
     const variedad = req.body.variedad || null;
-
-    const area_hectareas =
-      req.body.area_hectareas || req.body.area || null;
-
+    const area_hectareas = req.body.area_hectareas || req.body.area || null;
     const fecha_siembra = req.body.fecha_siembra || null;
-
     const estado = req.body.estado || "Activo";
-
-    const latitud =
-      req.body.latitud !== undefined &&
-      req.body.latitud !== null &&
-      req.body.latitud !== ""
-        ? Number(req.body.latitud)
-        : null;
-
-    const longitud =
-      req.body.longitud !== undefined &&
-      req.body.longitud !== null &&
-      req.body.longitud !== ""
-        ? Number(req.body.longitud)
-        : null;
+    const latitud = normalizarNumero(req.body.latitud);
+    const longitud = normalizarNumero(req.body.longitud);
 
     if (!codigo || !farm_id || !cultivo) {
       return res.status(400).json({
@@ -166,13 +178,18 @@ export const updateLot = async (req, res) => {
     }
 
     const fincaExiste = await pool.query(
-      "SELECT id FROM farms WHERE id = $1",
-      [Number(farm_id)]
+      `
+      SELECT id 
+      FROM farms 
+      WHERE id = $1
+      AND company_id = $2
+      `,
+      [Number(farm_id), companyId]
     );
 
     if (fincaExiste.rows.length === 0) {
       return res.status(400).json({
-        mensaje: "La finca seleccionada no existe",
+        mensaje: "La finca seleccionada no existe o no pertenece a esta empresa",
       });
     }
 
@@ -190,6 +207,7 @@ export const updateLot = async (req, res) => {
         latitud = $8,
         longitud = $9
       WHERE id = $10
+      AND company_id = $11
       RETURNING *
       `,
       [
@@ -197,23 +215,19 @@ export const updateLot = async (req, res) => {
         Number(farm_id),
         cultivo,
         variedad,
-
-        area_hectareas &&
-        !isNaN(area_hectareas)
-          ? Number(area_hectareas)
-          : null,
-
+        normalizarNumero(area_hectareas),
         fecha_siembra,
         estado,
         latitud,
         longitud,
         id,
+        companyId,
       ]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
-        mensaje: "Lote no encontrado",
+        mensaje: "Lote no encontrado para esta empresa",
       });
     }
 
@@ -233,20 +247,28 @@ export const updateLot = async (req, res) => {
 
 export const deleteLot = async (req, res) => {
   try {
+    const companyId = obtenerCompanyId(req);
     const { id } = req.params;
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
 
     const result = await pool.query(
       `
       DELETE FROM lots
       WHERE id = $1
+      AND company_id = $2
       RETURNING *
       `,
-      [id]
+      [id, companyId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
-        mensaje: "Lote no encontrado",
+        mensaje: "Lote no encontrado para esta empresa",
       });
     }
 

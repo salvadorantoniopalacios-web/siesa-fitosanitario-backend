@@ -1,5 +1,9 @@
 import pool from "../config/db.js";
 
+const obtenerCompanyId = (req) => {
+  return req.usuario?.company_id || null;
+};
+
 const limpiarNombrePlaga = (texto) => {
   if (!texto) return "Sin especificar";
 
@@ -12,49 +16,97 @@ const limpiarNombrePlaga = (texto) => {
 
 export const getDashboardSummary = async (req, res) => {
   try {
-    const fincas = await pool.query("SELECT COUNT(*) FROM farms");
-    const lotes = await pool.query("SELECT COUNT(*) FROM lots");
-    const evaluaciones = await pool.query("SELECT COUNT(*) FROM evaluations");
+    const companyId = obtenerCompanyId(req);
 
-    const alertas = await pool.query(`
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
+
+    const fincas = await pool.query(
+      `
+      SELECT COUNT(*) 
+      FROM farms
+      WHERE company_id = $1
+      `,
+      [companyId]
+    );
+
+    const lotes = await pool.query(
+      `
+      SELECT COUNT(*) 
+      FROM lots
+      WHERE company_id = $1
+      `,
+      [companyId]
+    );
+
+    const evaluaciones = await pool.query(
+      `
+      SELECT COUNT(*) 
+      FROM evaluations
+      WHERE company_id = $1
+      `,
+      [companyId]
+    );
+
+    const alertas = await pool.query(
+      `
       SELECT COUNT(*) 
       FROM evaluations 
       WHERE nivel_riesgo IN ('Alto', 'Crítico')
-    `);
+      AND company_id = $1
+      `,
+      [companyId]
+    );
 
-    const evaluacionesPorRiesgo = await pool.query(`
+    const evaluacionesPorRiesgo = await pool.query(
+      `
       SELECT 
         nivel_riesgo,
         COUNT(*) AS total
       FROM evaluations
+      WHERE company_id = $1
       GROUP BY nivel_riesgo
       ORDER BY total DESC
-    `);
+      `,
+      [companyId]
+    );
 
-    const incidenciaPorFinca = await pool.query(`
+    const incidenciaPorFinca = await pool.query(
+      `
       SELECT 
         farms.nombre AS finca,
         ROUND(AVG(evaluations.incidencia)::numeric, 2) AS incidencia_promedio,
         COUNT(evaluations.id) AS total_evaluaciones
       FROM evaluations
       JOIN farms ON farms.id = evaluations.farm_id
+      WHERE evaluations.company_id = $1
       GROUP BY farms.nombre
       ORDER BY incidencia_promedio DESC
       LIMIT 10
-    `);
+      `,
+      [companyId]
+    );
 
-    const tendenciaSemanal = await pool.query(`
+    const tendenciaSemanal = await pool.query(
+      `
       SELECT 
         TO_CHAR(DATE_TRUNC('week', fecha), 'YYYY-MM-DD') AS semana,
         ROUND(AVG(incidencia)::numeric, 2) AS incidencia_promedio,
         COUNT(*) AS total_evaluaciones
       FROM evaluations
+      WHERE company_id = $1
       GROUP BY DATE_TRUNC('week', fecha)
       ORDER BY semana ASC
       LIMIT 12
-    `);
+      `,
+      [companyId]
+    );
 
-    const topLotesCriticos = await pool.query(`
+    const topLotesCriticos = await pool.query(
+      `
       SELECT 
         lots.codigo AS lote,
         farms.nombre AS finca,
@@ -65,16 +117,23 @@ export const getDashboardSummary = async (req, res) => {
       JOIN lots ON lots.id = evaluations.lot_id
       JOIN farms ON farms.id = evaluations.farm_id
       WHERE evaluations.nivel_riesgo IN ('Alto', 'Crítico')
+      AND evaluations.company_id = $1
       GROUP BY lots.codigo, farms.nombre, lots.cultivo
       ORDER BY total_alertas DESC, incidencia_promedio DESC
       LIMIT 10
-    `);
+      `,
+      [companyId]
+    );
 
-    const plagasRaw = await pool.query(`
+    const plagasRaw = await pool.query(
+      `
       SELECT plaga_enfermedad
       FROM evaluations
       WHERE plaga_enfermedad IS NOT NULL
-    `);
+      AND company_id = $1
+      `,
+      [companyId]
+    );
 
     const conteoPlagas = {};
 

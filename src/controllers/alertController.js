@@ -1,8 +1,21 @@
 import pool from "../config/db.js";
 
+const obtenerCompanyId = (req) => {
+  return req.usuario?.company_id || null;
+};
+
 export const getAlerts = async (req, res) => {
   try {
-    const result = await pool.query(`
+    const companyId = obtenerCompanyId(req);
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
+
+    const result = await pool.query(
+      `
       SELECT
         l.id AS lot_id,
         l.codigo AS lote_codigo,
@@ -63,14 +76,18 @@ export const getAlerts = async (req, res) => {
         END AS estado_operativo
 
       FROM lots l
-      LEFT JOIN farms f ON l.farm_id = f.id
+      LEFT JOIN farms f 
+        ON l.farm_id = f.id
+        AND f.company_id = $1
       LEFT JOIN LATERAL (
         SELECT *
         FROM evaluations ev
         WHERE ev.lot_id = l.id
+        AND ev.company_id = $1
         ORDER BY ev.fecha DESC, ev.id DESC
         LIMIT 1
       ) e ON true
+      WHERE l.company_id = $1
       ORDER BY 
         CASE
           WHEN e.id IS NULL THEN 1
@@ -80,11 +97,14 @@ export const getAlerts = async (req, res) => {
           ELSE 5
         END,
         l.id DESC
-    `);
+      `,
+      [companyId]
+    );
 
     res.json(result.rows);
   } catch (error) {
     console.error("ERROR GET ALERTS:", error);
+
     res.status(500).json({
       mensaje: "Error obteniendo alertas",
       error: error.message,

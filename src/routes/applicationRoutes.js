@@ -9,6 +9,11 @@ import {
   deleteApplication,
 } from "../controllers/applicationController.js";
 
+import {
+  verificarToken,
+  permitirRoles,
+} from "../middleware/authMiddleware.js";
+
 const router = express.Router();
 
 const storage = multer.diskStorage({
@@ -31,20 +36,34 @@ const upload = multer({
   storage,
 });
 
-router.get("/", getApplications);
+router.get(
+  "/",
+  verificarToken,
+  permitirRoles("Admin", "Técnico", "Consulta"),
+  getApplications
+);
 
 router.post(
   "/",
+  verificarToken,
+  permitirRoles("Admin", "Técnico"),
   upload.single("foto"),
   createApplication
 );
 
 router.put(
   "/:id",
+  verificarToken,
+  permitirRoles("Admin", "Técnico"),
   upload.single("foto"),
   updateApplication
 );
 
-router.delete("/:id", deleteApplication);
+router.delete(
+  "/:id",
+  verificarToken,
+  permitirRoles("Admin"),
+  deleteApplication
+);
 
 export default router;

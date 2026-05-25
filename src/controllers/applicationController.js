@@ -5,6 +5,10 @@ const obtenerFotoUrl = (req) => {
   return `/uploads/${req.file.filename}`;
 };
 
+const obtenerCompanyId = (req) => {
+  return req.usuario?.company_id || null;
+};
+
 const normalizarNumero = (valor) => {
   if (valor === "" || valor === null || valor === undefined) return null;
 
@@ -15,7 +19,16 @@ const normalizarNumero = (valor) => {
 
 export const getApplications = async (req, res) => {
   try {
-    const result = await pool.query(`
+    const companyId = obtenerCompanyId(req);
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
+
+    const result = await pool.query(
+      `
       SELECT 
         applications.*,
         farms.nombre AS finca,
@@ -23,8 +36,11 @@ export const getApplications = async (req, res) => {
       FROM applications
       JOIN farms ON farms.id = applications.farm_id
       JOIN lots ON lots.id = applications.lot_id
+      WHERE applications.company_id = $1
       ORDER BY applications.fecha DESC, applications.id DESC
-    `);
+      `,
+      [companyId]
+    );
 
     res.json(result.rows);
   } catch (error) {
@@ -39,6 +55,14 @@ export const getApplications = async (req, res) => {
 
 export const createApplication = async (req, res) => {
   try {
+    const companyId = obtenerCompanyId(req);
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
+
     const {
       fecha,
       farm_id,
@@ -64,6 +88,39 @@ export const createApplication = async (req, res) => {
       });
     }
 
+    const fincaExiste = await pool.query(
+      `
+      SELECT id
+      FROM farms
+      WHERE id = $1
+      AND company_id = $2
+      `,
+      [Number(farm_id), companyId]
+    );
+
+    if (fincaExiste.rows.length === 0) {
+      return res.status(400).json({
+        mensaje: "La finca seleccionada no existe o no pertenece a esta empresa.",
+      });
+    }
+
+    const loteExiste = await pool.query(
+      `
+      SELECT id
+      FROM lots
+      WHERE id = $1
+      AND farm_id = $2
+      AND company_id = $3
+      `,
+      [Number(lot_id), Number(farm_id), companyId]
+    );
+
+    if (loteExiste.rows.length === 0) {
+      return res.status(400).json({
+        mensaje: "El lote seleccionado no existe o no pertenece a esta empresa.",
+      });
+    }
+
     const foto_url = obtenerFotoUrl(req);
 
     const result = await pool.query(
@@ -84,9 +141,10 @@ export const createApplication = async (req, res) => {
         observaciones,
         foto_url,
         latitud,
-        longitud
+        longitud,
+        company_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
       RETURNING *
       `,
       [
@@ -106,6 +164,7 @@ export const createApplication = async (req, res) => {
         foto_url,
         normalizarNumero(latitud),
         normalizarNumero(longitud),
+        companyId,
       ]
     );
 
@@ -125,6 +184,14 @@ export const createApplication = async (req, res) => {
 
 export const updateApplication = async (req, res) => {
   try {
+    const companyId = obtenerCompanyId(req);
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
+
     const { id } = req.params;
 
     const {
@@ -152,18 +219,52 @@ export const updateApplication = async (req, res) => {
       });
     }
 
+    const fincaExiste = await pool.query(
+      `
+      SELECT id
+      FROM farms
+      WHERE id = $1
+      AND company_id = $2
+      `,
+      [Number(farm_id), companyId]
+    );
+
+    if (fincaExiste.rows.length === 0) {
+      return res.status(400).json({
+        mensaje: "La finca seleccionada no existe o no pertenece a esta empresa.",
+      });
+    }
+
+    const loteExiste = await pool.query(
+      `
+      SELECT id
+      FROM lots
+      WHERE id = $1
+      AND farm_id = $2
+      AND company_id = $3
+      `,
+      [Number(lot_id), Number(farm_id), companyId]
+    );
+
+    if (loteExiste.rows.length === 0) {
+      return res.status(400).json({
+        mensaje: "El lote seleccionado no existe o no pertenece a esta empresa.",
+      });
+    }
+
     const actual = await pool.query(
       `
       SELECT foto_url
       FROM applications
       WHERE id = $1
+      AND company_id = $2
       `,
-      [id]
+      [id, companyId]
     );
 
     if (actual.rows.length === 0) {
       return res.status(404).json({
-        mensaje: "Aplicación fitosanitaria no encontrada",
+        mensaje: "Aplicación fitosanitaria no encontrada para esta empresa",
       });
     }
 
@@ -191,6 +292,7 @@ export const updateApplication = async (req, res) => {
         latitud = $15,
         longitud = $16
       WHERE id = $17
+      AND company_id = $18
       RETURNING *
       `,
       [
@@ -211,6 +313,7 @@ export const updateApplication = async (req, res) => {
         normalizarNumero(latitud),
         normalizarNumero(longitud),
         id,
+        companyId,
       ]
     );
 
@@ -230,20 +333,29 @@ export const updateApplication = async (req, res) => {
 
 export const deleteApplication = async (req, res) => {
   try {
+    const companyId = obtenerCompanyId(req);
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
+
     const { id } = req.params;
 
     const result = await pool.query(
       `
       DELETE FROM applications
       WHERE id = $1
+      AND company_id = $2
       RETURNING *
       `,
-      [id]
+      [id, companyId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
-        mensaje: "Aplicación fitosanitaria no encontrada",
+        mensaje: "Aplicación fitosanitaria no encontrada para esta empresa",
       });
     }
 

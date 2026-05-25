@@ -5,7 +5,9 @@ import path from "path";
 import cloudinary from "../config/cloudinary.js";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
-
+const obtenerCompanyId = (req) => {
+  return req.usuario?.company_id || null;
+};
 const calcularNivelRiesgo = (incidencia, severidad) => {
   const valor = Number(incidencia);
   const sev = String(severidad || "").toLowerCase();
@@ -237,7 +239,16 @@ const parsearPlagas = (texto) => {
 
 export const getEvaluations = async (req, res) => {
   try {
-    const result = await pool.query(`
+    const companyId = obtenerCompanyId(req);
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
+
+    const result = await pool.query(
+      `
       SELECT 
         evaluations.*,
         farms.nombre AS finca,
@@ -246,8 +257,11 @@ export const getEvaluations = async (req, res) => {
       FROM evaluations
       JOIN farms ON farms.id = evaluations.farm_id
       JOIN lots ON lots.id = evaluations.lot_id
+      WHERE evaluations.company_id = $1
       ORDER BY evaluations.id DESC
-    `);
+      `,
+      [companyId]
+    );
 
     res.json(result.rows);
   } catch (error) {
@@ -259,7 +273,6 @@ export const getEvaluations = async (req, res) => {
     });
   }
 };
-
 export const createEvaluation = async (req, res) => {
   try {
     console.log("=================================");
@@ -268,7 +281,13 @@ export const createEvaluation = async (req, res) => {
     console.log("CREATE EVALUATION - BODY RECIBIDO:");
     console.log(req.body);
     console.log("=================================");
+    const companyId = obtenerCompanyId(req);
 
+if (!companyId) {
+  return res.status(400).json({
+    mensaje: "No se pudo identificar la empresa del usuario.",
+  });
+}
     const {
       fecha,
       farm_id,
@@ -314,36 +333,38 @@ export const createEvaluation = async (req, res) => {
     const result = await pool.query(
       `
       INSERT INTO evaluations (
-        fecha,
-        farm_id,
-        lot_id,
-        plaga_enfermedad,
-        incidencia,
-        severidad,
-        nivel_riesgo,
-        observaciones,
-        responsable,
-        foto_url,
-        latitud,
-        longitud
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-      RETURNING *
+  fecha,
+  farm_id,
+  lot_id,
+  plaga_enfermedad,
+  incidencia,
+  severidad,
+  nivel_riesgo,
+  observaciones,
+  responsable,
+  foto_url,
+  latitud,
+  longitud,
+  company_id
+)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+RETURNING *
       `,
       [
-        fecha,
-        Number(farm_id),
-        Number(lot_id),
-        plaga_enfermedad_final,
-        Number(incidencia),
-        severidad,
-        nivel_riesgo,
-        observaciones || null,
-        responsable || null,
-        foto_url,
-        normalizarNumero(latitud),
-        normalizarNumero(longitud),
-      ]
+  fecha,
+  Number(farm_id),
+  Number(lot_id),
+  plaga_enfermedad_final,
+  Number(incidencia),
+  severidad,
+  nivel_riesgo,
+  observaciones || null,
+  responsable || null,
+  foto_url,
+  normalizarNumero(latitud),
+  normalizarNumero(longitud),
+  companyId,
+]
     );
 
     res.json({
@@ -412,10 +433,11 @@ export const updateEvaluation = async (req, res) => {
     const evaluacionActual = await pool.query(
       `
       SELECT foto_url
-      FROM evaluations
-      WHERE id = $1
+FROM evaluations
+WHERE id = $1
+AND company_id = $2
       `,
-      [id]
+      [id, companyId]
     );
 
     if (evaluacionActual.rows.length === 0) {
