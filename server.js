@@ -123,6 +123,43 @@ app.get("/reset-admin", async (req, res) => {
   }
 });
 
+/*
+========================================
+MIGRACIÓN TEMPORAL SAAS MULTIEMPRESA
+========================================
+*/
+app.get("/setup-user-companies", async (req, res) => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_companies (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        activo BOOLEAN DEFAULT true,
+        creado_en TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, company_id)
+      )
+    `);
+
+    await pool.query(`
+      INSERT INTO user_companies (user_id, company_id, activo)
+      SELECT id, company_id, true
+      FROM users
+      WHERE company_id IS NOT NULL
+      ON CONFLICT (user_id, company_id) DO NOTHING
+    `);
+
+    res.json({
+      mensaje: "Tabla user_companies creada y datos iniciales migrados correctamente",
+    });
+  } catch (error) {
+    res.status(500).json({
+      mensaje: "Error creando user_companies",
+      error: error.message,
+    });
+  }
+});
+
 app.use("/api/auth", authRoutes);
 app.use("/api/farms", farmRoutes);
 app.use("/api/lots", lotRoutes);
