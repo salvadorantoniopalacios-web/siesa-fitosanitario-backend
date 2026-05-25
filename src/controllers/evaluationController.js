@@ -391,6 +391,14 @@ export const updateEvaluation = async (req, res) => {
     console.log(req.body);
     console.log("=================================");
 
+    const companyId = obtenerCompanyId(req);
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
+
     const { id } = req.params;
 
     const {
@@ -433,9 +441,9 @@ export const updateEvaluation = async (req, res) => {
     const evaluacionActual = await pool.query(
       `
       SELECT foto_url
-FROM evaluations
-WHERE id = $1
-AND company_id = $2
+      FROM evaluations
+      WHERE id = $1
+      AND company_id = $2
       `,
       [id, companyId]
     );
@@ -447,7 +455,11 @@ AND company_id = $2
     }
 
     const foto_url = nuevaFotoUrl || evaluacionActual.rows[0].foto_url || null;
-    const nivel_riesgo = calcularNivelRiesgo(incidencia, severidad);
+
+    const nivel_riesgo = calcularNivelRiesgo(
+      incidencia,
+      severidad
+    );
 
     const result = await pool.query(
       `
@@ -466,6 +478,7 @@ AND company_id = $2
         latitud = $11,
         longitud = $12
       WHERE id = $13
+      AND company_id = $14
       RETURNING *
       `,
       [
@@ -482,8 +495,15 @@ AND company_id = $2
         normalizarNumero(latitud),
         normalizarNumero(longitud),
         id,
+        companyId,
       ]
     );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        mensaje: "Evaluación no encontrada para esta empresa",
+      });
+    }
 
     res.json({
       mensaje: "Evaluación actualizada correctamente",
@@ -502,20 +522,29 @@ AND company_id = $2
 
 export const deleteEvaluation = async (req, res) => {
   try {
+    const companyId = obtenerCompanyId(req);
+
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
+
     const { id } = req.params;
 
     const result = await pool.query(
       `
       DELETE FROM evaluations
       WHERE id = $1
+      AND company_id = $2
       RETURNING *
       `,
-      [id]
+      [id, companyId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
-        mensaje: "Evaluación no encontrada",
+        mensaje: "Evaluación no encontrada para esta empresa",
       });
     }
 
@@ -539,7 +568,6 @@ export const deleteEvaluation = async (req, res) => {
     });
   }
 };
-
 export const generateEvaluationPdf = async (req, res) => {
   try {
     const { id } = req.params;

@@ -29,19 +29,61 @@ export const createCompany = async (req, res) => {
   try {
     const { nombre, nit, direccion, telefono, logo_url } = req.body;
 
-    if (!nombre) {
+    if (!nombre || nombre.trim() === "") {
       return res.status(400).json({
         mensaje: "El nombre de la empresa es obligatorio",
       });
     }
 
+    /*
+    ========================================
+    VALIDAR DUPLICADOS
+    ========================================
+    */
+
+    const empresaExistente = await pool.query(
+      `
+      SELECT id
+      FROM companies
+      WHERE LOWER(nombre) = LOWER($1)
+      LIMIT 1
+      `,
+      [nombre.trim()]
+    );
+
+    if (empresaExistente.rows.length > 0) {
+      return res.status(400).json({
+        mensaje: "Ya existe una empresa con ese nombre",
+      });
+    }
+
+    /*
+    ========================================
+    CREAR EMPRESA
+    ========================================
+    */
+
     const result = await pool.query(
       `
-      INSERT INTO companies (nombre, nit, direccion, telefono, logo_url, activo)
+      INSERT INTO companies
+      (
+        nombre,
+        nit,
+        direccion,
+        telefono,
+        logo_url,
+        activo
+      )
       VALUES ($1, $2, $3, $4, $5, true)
       RETURNING *
       `,
-      [nombre, nit || null, direccion || null, telefono || null, logo_url || null]
+      [
+        nombre.trim(),
+        nit || null,
+        direccion || null,
+        telefono || null,
+        logo_url || null,
+      ]
     );
 
     res.json({
@@ -49,6 +91,8 @@ export const createCompany = async (req, res) => {
       data: result.rows[0],
     });
   } catch (error) {
+    console.error("ERROR CREATE COMPANY:", error);
+
     res.status(500).json({
       mensaje: "Error creando empresa",
       error: error.message,
@@ -59,13 +103,50 @@ export const createCompany = async (req, res) => {
 export const updateCompany = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, nit, direccion, telefono, logo_url, activo } = req.body;
 
-    if (!nombre) {
+    const {
+      nombre,
+      nit,
+      direccion,
+      telefono,
+      logo_url,
+      activo,
+    } = req.body;
+
+    if (!nombre || nombre.trim() === "") {
       return res.status(400).json({
         mensaje: "El nombre de la empresa es obligatorio",
       });
     }
+
+    /*
+    ========================================
+    VALIDAR DUPLICADO EXCLUYENDO EL MISMO ID
+    ========================================
+    */
+
+    const empresaExistente = await pool.query(
+      `
+      SELECT id
+      FROM companies
+      WHERE LOWER(nombre) = LOWER($1)
+      AND id != $2
+      LIMIT 1
+      `,
+      [nombre.trim(), id]
+    );
+
+    if (empresaExistente.rows.length > 0) {
+      return res.status(400).json({
+        mensaje: "Ya existe otra empresa con ese nombre",
+      });
+    }
+
+    /*
+    ========================================
+    ACTUALIZAR
+    ========================================
+    */
 
     const result = await pool.query(
       `
@@ -80,7 +161,7 @@ export const updateCompany = async (req, res) => {
       RETURNING *
       `,
       [
-        nombre,
+        nombre.trim(),
         nit || null,
         direccion || null,
         telefono || null,
@@ -101,6 +182,8 @@ export const updateCompany = async (req, res) => {
       data: result.rows[0],
     });
   } catch (error) {
+    console.error("ERROR UPDATE COMPANY:", error);
+
     res.status(500).json({
       mensaje: "Error actualizando empresa",
       error: error.message,
@@ -135,6 +218,8 @@ export const toggleCompanyStatus = async (req, res) => {
       data: result.rows[0],
     });
   } catch (error) {
+    console.error("ERROR TOGGLE COMPANY:", error);
+
     res.status(500).json({
       mensaje: "Error cambiando estado de empresa",
       error: error.message,
