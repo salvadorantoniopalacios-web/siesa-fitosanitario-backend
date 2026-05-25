@@ -1,11 +1,49 @@
 import bcrypt from "bcryptjs";
 import pool from "../config/db.js";
 
-const rolesPermitidos = ["Admin", "Técnico", "Consulta"];
+const rolesPermitidos = ["SuperAdmin", "Admin", "Técnico", "Consulta"];
+
+const esSuperAdmin = (req) => {
+  return req.usuario?.rol === "SuperAdmin";
+};
+
+const obtenerCompanyId = (req) => {
+  return req.usuario?.company_id || null;
+};
+
+const obtenerCompanyFinal = (req, company_id_body) => {
+  if (esSuperAdmin(req)) {
+    return company_id_body;
+  }
+
+  return obtenerCompanyId(req);
+};
 
 export const getUsers = async (req, res) => {
   try {
-    const result = await pool.query(`
+    if (esSuperAdmin(req)) {
+      const result = await pool.query(`
+        SELECT 
+          users.id, 
+          users.nombre, 
+          users.email, 
+          users.rol,
+          users.activo,
+          users.company_id,
+          companies.nombre AS empresa,
+          users.creado_en
+        FROM users
+        LEFT JOIN companies ON companies.id = users.company_id
+        ORDER BY users.id DESC
+      `);
+
+      return res.json(result.rows);
+    }
+
+    const companyId = obtenerCompanyId(req);
+
+    const result = await pool.query(
+      `
       SELECT 
         users.id, 
         users.nombre, 
@@ -17,8 +55,11 @@ export const getUsers = async (req, res) => {
         users.creado_en
       FROM users
       LEFT JOIN companies ON companies.id = users.company_id
+      WHERE users.company_id = $1
       ORDER BY users.id DESC
-    `);
+      `,
+      [companyId]
+    );
 
     res.json(result.rows);
   } catch (error) {
@@ -33,7 +74,9 @@ export const createUser = async (req, res) => {
   try {
     const { nombre, email, password, rol, company_id } = req.body;
 
-    if (!nombre || !email || !password || !rol || !company_id) {
+    const companyFinal = obtenerCompanyFinal(req, company_id);
+
+    if (!nombre || !email || !password || !rol || !companyFinal) {
       return res.status(400).json({
         mensaje: "Nombre, email, contraseña, rol y empresa son obligatorios",
       });
@@ -41,7 +84,13 @@ export const createUser = async (req, res) => {
 
     if (!rolesPermitidos.includes(rol)) {
       return res.status(400).json({
-        mensaje: "Rol no válido. Use Admin, Técnico o Consulta.",
+        mensaje: "Rol no válido.",
+      });
+    }
+
+    if (!esSuperAdmin(req) && rol === "SuperAdmin") {
+      return res.status(403).json({
+        mensaje: "Solo SuperAdmin puede crear usuarios SuperAdmin.",
       });
     }
 
@@ -52,7 +101,7 @@ export const createUser = async (req, res) => {
       WHERE id = $1
       AND activo = true
       `,
-      [company_id]
+      [companyFinal]
     );
 
     if (empresaExiste.rows.length === 0) {
@@ -79,7 +128,7 @@ export const createUser = async (req, res) => {
       VALUES ($1, $2, $3, $4, true, $5)
       RETURNING id, nombre, email, rol, activo, company_id, creado_en
       `,
-      [nombre, email, passwordHash, rol, company_id]
+      [nombre, email, passwordHash, rol, companyFinal]
     );
 
     await pool.query(
@@ -88,7 +137,7 @@ export const createUser = async (req, res) => {
       VALUES ($1, $2, true)
       ON CONFLICT (user_id, company_id) DO NOTHING
       `,
-      [result.rows[0].id, company_id]
+      [result.rows[0].id, companyFinal]
     );
 
     res.json({
@@ -108,7 +157,9 @@ export const updateUser = async (req, res) => {
     const { id } = req.params;
     const { nombre, email, rol, password, activo, company_id } = req.body;
 
-    if (!nombre || !email || !rol || !company_id) {
+    const companyFinal = obtenerCompanyFinal(req, company_id);
+
+    if (!nombre || !email || !rol || !companyFinal) {
       return res.status(400).json({
         mensaje: "Nombre, email, rol y empresa son obligatorios",
       });
@@ -116,8 +167,39 @@ export const updateUser = async (req, res) => {
 
     if (!rolesPermitidos.includes(rol)) {
       return res.status(400).json({
-        mensaje: "Rol no válido. Use Admin, Técnico o Consulta.",
+        mensaje: "Rol no válido.",
       });
+    }
+
+    if (!esSuperAdmin(req) && rol === "SuperAdmin") {
+      return res.status(403).json({
+        mensaje: "Solo SuperAdmin puede asignar rol SuperAdmin.",
+      });
+    }
+
+    const usuarioExiste = await pool.query(
+      `
+      SELECT id, company_id
+      FROM users 
+      WHERE id = $1
+      `,
+      [id]
+    );
+
+    if (usuarioExiste.rows.length === 0) {
+      return res.status(404).json({
+        mensaje: "Usuario no encontrado",
+      });
+    }
+
+    if (!esSuperAdmin(req)) {
+      const companyId = obtenerCompanyId(req);
+
+      if (Number(usuarioExiste.rows[0].company_id) !== Number(companyId)) {
+        return res.status(403).json({
+          mensaje: "No puede modificar usuarios de otra empresa.",
+        });
+      }
     }
 
     const empresaExiste = await pool.query(
@@ -127,7 +209,7 @@ export const updateUser = async (req, res) => {
       WHERE id = $1
       AND activo = true
       `,
-      [company_id]
+      [companyFinal]
     );
 
     if (empresaExiste.rows.length === 0) {
@@ -152,21 +234,6 @@ export const updateUser = async (req, res) => {
       });
     }
 
-    const usuarioExiste = await pool.query(
-      `
-      SELECT id 
-      FROM users 
-      WHERE id = $1
-      `,
-      [id]
-    );
-
-    if (usuarioExiste.rows.length === 0) {
-      return res.status(404).json({
-        mensaje: "Usuario no encontrado",
-      });
-    }
-
     const activoFinal = activo === true || activo === false ? activo : true;
 
     let result;
@@ -186,7 +253,7 @@ export const updateUser = async (req, res) => {
         WHERE id = $7
         RETURNING id, nombre, email, rol, activo, company_id, creado_en
         `,
-        [nombre, email, rol, passwordHash, activoFinal, company_id, id]
+        [nombre, email, rol, passwordHash, activoFinal, companyFinal, id]
       );
     } else {
       result = await pool.query(
@@ -200,7 +267,7 @@ export const updateUser = async (req, res) => {
         WHERE id = $6
         RETURNING id, nombre, email, rol, activo, company_id, creado_en
         `,
-        [nombre, email, rol, activoFinal, company_id, id]
+        [nombre, email, rol, activoFinal, companyFinal, id]
       );
     }
 
@@ -211,7 +278,7 @@ export const updateUser = async (req, res) => {
       ON CONFLICT (user_id, company_id) DO UPDATE
       SET activo = true
       `,
-      [id, company_id]
+      [id, companyFinal]
     );
 
     res.json({
@@ -236,6 +303,31 @@ export const toggleUserStatus = async (req, res) => {
       });
     }
 
+    const usuarioExiste = await pool.query(
+      `
+      SELECT id, company_id
+      FROM users
+      WHERE id = $1
+      `,
+      [id]
+    );
+
+    if (usuarioExiste.rows.length === 0) {
+      return res.status(404).json({
+        mensaje: "Usuario no encontrado",
+      });
+    }
+
+    if (!esSuperAdmin(req)) {
+      const companyId = obtenerCompanyId(req);
+
+      if (Number(usuarioExiste.rows[0].company_id) !== Number(companyId)) {
+        return res.status(403).json({
+          mensaje: "No puede cambiar estado de usuarios de otra empresa.",
+        });
+      }
+    }
+
     const result = await pool.query(
       `
       UPDATE users
@@ -245,12 +337,6 @@ export const toggleUserStatus = async (req, res) => {
       `,
       [id]
     );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        mensaje: "Usuario no encontrado",
-      });
-    }
 
     res.json({
       mensaje: result.rows[0].activo
@@ -276,6 +362,31 @@ export const deleteUser = async (req, res) => {
       });
     }
 
+    const usuarioExiste = await pool.query(
+      `
+      SELECT id, company_id
+      FROM users
+      WHERE id = $1
+      `,
+      [id]
+    );
+
+    if (usuarioExiste.rows.length === 0) {
+      return res.status(404).json({
+        mensaje: "Usuario no encontrado",
+      });
+    }
+
+    if (!esSuperAdmin(req)) {
+      const companyId = obtenerCompanyId(req);
+
+      if (Number(usuarioExiste.rows[0].company_id) !== Number(companyId)) {
+        return res.status(403).json({
+          mensaje: "No puede eliminar usuarios de otra empresa.",
+        });
+      }
+    }
+
     const result = await pool.query(
       `
       DELETE FROM users
@@ -284,12 +395,6 @@ export const deleteUser = async (req, res) => {
       `,
       [id]
     );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        mensaje: "Usuario no encontrado",
-      });
-    }
 
     res.json({
       mensaje: "Usuario eliminado correctamente",

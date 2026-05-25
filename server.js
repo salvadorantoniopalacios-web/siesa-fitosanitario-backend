@@ -159,7 +159,64 @@ app.get("/setup-user-companies", async (req, res) => {
     });
   }
 });
+/*
+========================================
+CONVERTIR ADMIN ACTUAL A SUPERADMIN
+========================================
+*/
+app.get("/make-superadmin", async (req, res) => {
+  try {
+    const email = req.query.email || "admin@siesa.com";
 
+    const usuario = await pool.query(
+      `
+      SELECT id, email, company_id
+      FROM users
+      WHERE email = $1
+      `,
+      [email]
+    );
+
+    if (usuario.rows.length === 0) {
+      return res.status(404).json({
+        mensaje: "Usuario no encontrado",
+        email,
+      });
+    }
+
+    await pool.query(
+      `
+      UPDATE users
+      SET rol = 'SuperAdmin',
+          activo = true
+      WHERE email = $1
+      `,
+      [email]
+    );
+
+    await pool.query(
+      `
+      INSERT INTO user_companies (user_id, company_id, activo)
+      SELECT $1, id, true
+      FROM companies
+      WHERE activo = true
+      ON CONFLICT (user_id, company_id) DO UPDATE
+      SET activo = true
+      `,
+      [usuario.rows[0].id]
+    );
+
+    res.json({
+      mensaje: "Usuario convertido a SuperAdmin y asignado a todas las empresas",
+      email,
+    });
+  } catch (error) {
+    res.status(500).json({
+      mensaje: "Error convirtiendo a SuperAdmin",
+      error: error.message,
+    });
+  }
+});
 app.use("/api/auth", authRoutes);
 app.use("/api/farms", farmRoutes);
 app.use("/api/lots", lotRoutes);
