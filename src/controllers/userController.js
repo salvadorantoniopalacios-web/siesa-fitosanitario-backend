@@ -3,10 +3,6 @@ import pool from "../config/db.js";
 
 const rolesPermitidos = ["Admin", "Técnico", "Consulta"];
 
-const obtenerCompanyId = (req) => {
-  return req.usuario?.company_id || null;
-};
-
 export const getUsers = async (req, res) => {
   try {
     const result = await pool.query(`
@@ -84,6 +80,15 @@ export const createUser = async (req, res) => {
       RETURNING id, nombre, email, rol, activo, company_id, creado_en
       `,
       [nombre, email, passwordHash, rol, company_id]
+    );
+
+    await pool.query(
+      `
+      INSERT INTO user_companies (user_id, company_id, activo)
+      VALUES ($1, $2, true)
+      ON CONFLICT (user_id, company_id) DO NOTHING
+      `,
+      [result.rows[0].id, company_id]
     );
 
     res.json({
@@ -198,6 +203,16 @@ export const updateUser = async (req, res) => {
         [nombre, email, rol, activoFinal, company_id, id]
       );
     }
+
+    await pool.query(
+      `
+      INSERT INTO user_companies (user_id, company_id, activo)
+      VALUES ($1, $2, true)
+      ON CONFLICT (user_id, company_id) DO UPDATE
+      SET activo = true
+      `,
+      [id, company_id]
+    );
 
     res.json({
       mensaje: "Usuario actualizado correctamente",
