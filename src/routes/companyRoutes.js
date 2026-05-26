@@ -14,7 +14,6 @@ import {
 
 const router = express.Router();
 
-// Solo SuperAdmin puede administrar empresas
 router.get(
   "/",
   verificarToken,
