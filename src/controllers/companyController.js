@@ -1,4 +1,36 @@
 import pool from "../config/db.js";
+import cloudinary from "../config/cloudinary.js";
+
+/*
+========================================
+SUBIR LOGO CLOUDINARY
+========================================
+*/
+const subirLogoCloudinary = (file) => {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.buffer) {
+      resolve(null);
+      return;
+    }
+
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "siesa-fitosanitario/companies",
+        resource_type: "image",
+      },
+      (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(result.secure_url);
+      }
+    );
+
+    stream.end(file.buffer);
+  });
+};
 
 export const getCompanies = async (req, res) => {
   try {
@@ -27,7 +59,7 @@ export const getCompanies = async (req, res) => {
 
 export const createCompany = async (req, res) => {
   try {
-    const { nombre, nit, direccion, telefono, logo_url } = req.body;
+    const { nombre, nit, direccion, telefono } = req.body;
 
     if (!nombre || nombre.trim() === "") {
       return res.status(400).json({
@@ -40,7 +72,6 @@ export const createCompany = async (req, res) => {
     VALIDAR DUPLICADOS
     ========================================
     */
-
     const empresaExistente = await pool.query(
       `
       SELECT id
@@ -59,10 +90,16 @@ export const createCompany = async (req, res) => {
 
     /*
     ========================================
+    SUBIR LOGO
+    ========================================
+    */
+    const logo_url = await subirLogoCloudinary(req.file);
+
+    /*
+    ========================================
     CREAR EMPRESA
     ========================================
     */
-
     const result = await pool.query(
       `
       INSERT INTO companies
@@ -109,7 +146,6 @@ export const updateCompany = async (req, res) => {
       nit,
       direccion,
       telefono,
-      logo_url,
       activo,
     } = req.body;
 
@@ -121,10 +157,9 @@ export const updateCompany = async (req, res) => {
 
     /*
     ========================================
-    VALIDAR DUPLICADO EXCLUYENDO EL MISMO ID
+    VALIDAR DUPLICADO
     ========================================
     */
-
     const empresaExistente = await pool.query(
       `
       SELECT id
@@ -144,10 +179,39 @@ export const updateCompany = async (req, res) => {
 
     /*
     ========================================
+    EMPRESA ACTUAL
+    ========================================
+    */
+    const empresaActual = await pool.query(
+      `
+      SELECT logo_url
+      FROM companies
+      WHERE id = $1
+      `,
+      [id]
+    );
+
+    if (empresaActual.rows.length === 0) {
+      return res.status(404).json({
+        mensaje: "Empresa no encontrada",
+      });
+    }
+
+    /*
+    ========================================
+    SUBIR NUEVO LOGO
+    ========================================
+    */
+    const nuevoLogo = await subirLogoCloudinary(req.file);
+
+    const logo_url =
+      nuevoLogo || empresaActual.rows[0].logo_url || null;
+
+    /*
+    ========================================
     ACTUALIZAR
     ========================================
     */
-
     const result = await pool.query(
       `
       UPDATE companies
@@ -165,17 +229,11 @@ export const updateCompany = async (req, res) => {
         nit || null,
         direccion || null,
         telefono || null,
-        logo_url || null,
+        logo_url,
         activo === false ? false : true,
         id,
       ]
     );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        mensaje: "Empresa no encontrada",
-      });
-    }
 
     res.json({
       mensaje: "Empresa actualizada correctamente",
