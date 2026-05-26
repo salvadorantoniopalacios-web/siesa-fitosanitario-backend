@@ -27,17 +27,6 @@ if (!fs.existsSync(uploadsDir)) {
   console.log("✅ Carpeta uploads creada:", uploadsDir);
 }
 
-/*
-========================================
-MULTER PARA CLOUDINARY
-========================================
-No se eliminan rutas ni permisos.
-Antes: multer.diskStorage guardaba en /uploads.
-Ahora: multer.memoryStorage guarda temporalmente en memoria
-para enviar el archivo a Cloudinary desde el controller.
-========================================
-*/
-
 const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
@@ -104,21 +93,21 @@ const manejarUploadEvaluacion = (req, res, next) => {
 router.get(
   "/",
   verificarToken,
-  permitirRoles("Admin", "Técnico", "Consulta"),
+  permitirRoles("SuperAdmin", "Admin", "Técnico", "Consulta"),
   getEvaluations
 );
 
 router.get(
   "/:id/pdf",
   verificarToken,
-  permitirRoles("Admin", "Técnico", "Consulta"),
+  permitirRoles("SuperAdmin", "Admin", "Técnico", "Consulta"),
   generateEvaluationPdf
 );
 
 router.post(
   "/",
   verificarToken,
-  permitirRoles("Admin", "Técnico"),
+  permitirRoles("SuperAdmin", "Admin", "Técnico"),
   manejarUploadEvaluacion,
   createEvaluation
 );
@@ -126,7 +115,7 @@ router.post(
 router.put(
   "/:id",
   verificarToken,
-  permitirRoles("Admin", "Técnico"),
+  permitirRoles("SuperAdmin", "Admin", "Técnico"),
   manejarUploadEvaluacion,
   updateEvaluation
 );
@@ -134,7 +123,7 @@ router.put(
 router.delete(
   "/:id",
   verificarToken,
-  permitirRoles("Admin"),
+  permitirRoles("SuperAdmin", "Admin"),
   deleteEvaluation
 );
 

@@ -14,9 +14,32 @@ import {
 
 const router = express.Router();
 
-router.get("/", verificarToken, permitirRoles("Admin", "Técnico", "Consulta"), getLots);
-router.post("/", verificarToken, permitirRoles("Admin", "Técnico"), createLot);
-router.put("/:id", verificarToken, permitirRoles("Admin", "Técnico"), updateLot);
-router.delete("/:id", verificarToken, permitirRoles("Admin"), deleteLot);
+router.get(
+  "/",
+  verificarToken,
+  permitirRoles("SuperAdmin", "Admin", "Técnico", "Consulta"),
+  getLots
+);
+
+router.post(
+  "/",
+  verificarToken,
+  permitirRoles("SuperAdmin", "Admin", "Técnico"),
+  createLot
+);
+
+router.put(
+  "/:id",
+  verificarToken,
+  permitirRoles("SuperAdmin", "Admin", "Técnico"),
+  updateLot
+);
+
+router.delete(
+  "/:id",
+  verificarToken,
+  permitirRoles("SuperAdmin", "Admin"),
+  deleteLot
+);
 
 export default router;

@@ -39,14 +39,14 @@ const upload = multer({
 router.get(
   "/",
   verificarToken,
-  permitirRoles("Admin", "Técnico", "Consulta"),
+  permitirRoles("SuperAdmin", "Admin", "Técnico", "Consulta"),
   getApplications
 );
 
 router.post(
   "/",
   verificarToken,
-  permitirRoles("Admin", "Técnico"),
+  permitirRoles("SuperAdmin", "Admin", "Técnico"),
   upload.single("foto"),
   createApplication
 );
@@ -54,7 +54,7 @@ router.post(
 router.put(
   "/:id",
   verificarToken,
-  permitirRoles("Admin", "Técnico"),
+  permitirRoles("SuperAdmin", "Admin", "Técnico"),
   upload.single("foto"),
   updateApplication
 );
@@ -62,7 +62,7 @@ router.put(
 router.delete(
   "/:id",
   verificarToken,
-  permitirRoles("Admin"),
+  permitirRoles("SuperAdmin", "Admin"),
   deleteApplication
 );
 
