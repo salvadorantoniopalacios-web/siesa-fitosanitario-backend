@@ -19,51 +19,74 @@ const limpiarNombrePlaga = (texto) => {
   return match ? match[1].trim() : sinNumero;
 };
 
+const existeColumna = async (tabla, columna) => {
+  const result = await pool.query(
+    `
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = $1
+    AND column_name = $2
+    `,
+    [tabla, columna]
+  );
+
+  return result.rows.length > 0;
+};
+
 export const getDashboardSummary = async (req, res) => {
   try {
     const companyId = obtenerCompanyId(req);
 
-    if (!companyId) {
-      return res.status(400).json({
-        mensaje: "No se pudo identificar la empresa del usuario.",
-      });
-    }
+    const farmsTieneCompanyId = await existeColumna("farms", "company_id");
+    const lotsTieneCompanyId = await existeColumna("lots", "company_id");
+    const evaluationsTieneCompanyId = await existeColumna("evaluations", "company_id");
+
+    const filtroFarms = farmsTieneCompanyId && companyId ? "WHERE company_id = $1" : "";
+    const filtroLots = lotsTieneCompanyId && companyId ? "WHERE company_id = $1" : "";
+    const filtroEvaluations =
+      evaluationsTieneCompanyId && companyId ? "WHERE company_id = $1" : "";
+
+    const paramsFarms = farmsTieneCompanyId && companyId ? [companyId] : [];
+    const paramsLots = lotsTieneCompanyId && companyId ? [companyId] : [];
+    const paramsEvaluations =
+      evaluationsTieneCompanyId && companyId ? [companyId] : [];
 
     const fincas = await pool.query(
       `
-      SELECT COUNT(*) 
+      SELECT COUNT(*) AS count
       FROM farms
-      WHERE company_id = $1
+      ${filtroFarms}
       `,
-      [companyId]
+      paramsFarms
     );
 
     const lotes = await pool.query(
       `
-      SELECT COUNT(*) 
+      SELECT COUNT(*) AS count
       FROM lots
-      WHERE company_id = $1
+      ${filtroLots}
       `,
-      [companyId]
+      paramsLots
     );
 
     const evaluaciones = await pool.query(
       `
-      SELECT COUNT(*) 
+      SELECT COUNT(*) AS count
       FROM evaluations
-      WHERE company_id = $1
+      ${filtroEvaluations}
       `,
-      [companyId]
+      paramsEvaluations
     );
 
     const alertas = await pool.query(
       `
-      SELECT COUNT(*) 
-      FROM evaluations 
+      SELECT COUNT(*) AS count
+      FROM evaluations
       WHERE nivel_riesgo IN ('Alto', 'Crítico')
-      AND company_id = $1
+      ${evaluationsTieneCompanyId && companyId ? "AND company_id = $1" : ""}
       `,
-      [companyId]
+      paramsEvaluations
     );
 
     const evaluacionesPorRiesgo = await pool.query(
@@ -72,11 +95,11 @@ export const getDashboardSummary = async (req, res) => {
         nivel_riesgo,
         COUNT(*) AS total
       FROM evaluations
-      WHERE company_id = $1
+      ${filtroEvaluations}
       GROUP BY nivel_riesgo
       ORDER BY total DESC
       `,
-      [companyId]
+      paramsEvaluations
     );
 
     const incidenciaPorFinca = await pool.query(
@@ -87,12 +110,12 @@ export const getDashboardSummary = async (req, res) => {
         COUNT(evaluations.id) AS total_evaluaciones
       FROM evaluations
       JOIN farms ON farms.id = evaluations.farm_id
-      WHERE evaluations.company_id = $1
+      ${evaluationsTieneCompanyId && companyId ? "WHERE evaluations.company_id = $1" : ""}
       GROUP BY farms.nombre
       ORDER BY incidencia_promedio DESC
       LIMIT 10
       `,
-      [companyId]
+      paramsEvaluations
     );
 
     const tendenciaSemanal = await pool.query(
@@ -102,12 +125,12 @@ export const getDashboardSummary = async (req, res) => {
         ROUND(AVG(incidencia)::numeric, 2) AS incidencia_promedio,
         COUNT(*) AS total_evaluaciones
       FROM evaluations
-      WHERE company_id = $1
+      ${filtroEvaluations}
       GROUP BY DATE_TRUNC('week', fecha)
       ORDER BY semana ASC
       LIMIT 12
       `,
-      [companyId]
+      paramsEvaluations
     );
 
     const topLotesCriticos = await pool.query(
@@ -122,12 +145,12 @@ export const getDashboardSummary = async (req, res) => {
       JOIN lots ON lots.id = evaluations.lot_id
       JOIN farms ON farms.id = evaluations.farm_id
       WHERE evaluations.nivel_riesgo IN ('Alto', 'Crítico')
-      AND evaluations.company_id = $1
+      ${evaluationsTieneCompanyId && companyId ? "AND evaluations.company_id = $1" : ""}
       GROUP BY lots.codigo, farms.nombre, lots.cultivo
       ORDER BY total_alertas DESC, incidencia_promedio DESC
       LIMIT 10
       `,
-      [companyId]
+      paramsEvaluations
     );
 
     const plagasRaw = await pool.query(
@@ -135,9 +158,9 @@ export const getDashboardSummary = async (req, res) => {
       SELECT plaga_enfermedad
       FROM evaluations
       WHERE plaga_enfermedad IS NOT NULL
-      AND company_id = $1
+      ${evaluationsTieneCompanyId && companyId ? "AND company_id = $1" : ""}
       `,
-      [companyId]
+      paramsEvaluations
     );
 
     const conteoPlagas = {};
@@ -150,20 +173,12 @@ export const getDashboardSummary = async (req, res) => {
 
       partes.forEach((parte) => {
         const nombre = limpiarNombrePlaga(parte);
-
-        if (!conteoPlagas[nombre]) {
-          conteoPlagas[nombre] = 0;
-        }
-
-        conteoPlagas[nombre] += 1;
+        conteoPlagas[nombre] = (conteoPlagas[nombre] || 0) + 1;
       });
     });
 
     const topPlagas = Object.entries(conteoPlagas)
-      .map(([plaga, total]) => ({
-        plaga,
-        total,
-      }))
+      .map(([plaga, total]) => ({ plaga, total }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
 
