@@ -72,6 +72,44 @@ app.get("/", async (req, res) => {
 
 /*
 ========================================
+DEBUG ESTRUCTURA BASE DE DATOS
+========================================
+*/
+app.get("/debug-db-structure", async (req, res) => {
+  try {
+    const columns = await pool.query(`
+      SELECT 
+        table_name,
+        column_name,
+        data_type
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+      AND table_name IN (
+        'farms',
+        'lots',
+        'evaluations',
+        'applications',
+        'users',
+        'companies',
+        'crops',
+        'pests'
+      )
+      ORDER BY table_name, ordinal_position
+    `);
+
+    res.json({
+      columns: columns.rows,
+    });
+  } catch (error) {
+    res.status(500).json({
+      mensaje: "Error obteniendo estructura BD",
+      error: error.message,
+    });
+  }
+});
+
+/*
+========================================
 RESET ADMIN TEMPORAL
 ========================================
 */
@@ -159,6 +197,7 @@ app.get("/setup-user-companies", async (req, res) => {
     });
   }
 });
+
 /*
 ========================================
 CONVERTIR ADMIN ACTUAL A SUPERADMIN
@@ -217,6 +256,7 @@ app.get("/make-superadmin", async (req, res) => {
     });
   }
 });
+
 /*
 ========================================
 DIAGNÓSTICO MULTIEMPRESA
@@ -264,6 +304,7 @@ app.get("/debug-companies-data", async (req, res) => {
     });
   }
 });
+
 app.use("/api/auth", authRoutes);
 app.use("/api/farms", farmRoutes);
 app.use("/api/lots", lotRoutes);
