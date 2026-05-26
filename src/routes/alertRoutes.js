@@ -11,7 +11,7 @@ const router = express.Router();
 router.get(
   "/",
   verificarToken,
-  permitirRoles("Admin", "Técnico", "Consulta"),
+  permitirRoles("SuperAdmin", "Admin", "Técnico", "Consulta"),
   getAlerts
 );
 

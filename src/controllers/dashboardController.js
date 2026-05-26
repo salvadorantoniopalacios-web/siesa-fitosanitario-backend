@@ -1,7 +1,12 @@
 import pool from "../config/db.js";
 
 const obtenerCompanyId = (req) => {
-  return req.usuario?.company_id || null;
+  return (
+    req.usuario?.active_company_id ||
+    req.usuario?.company_id ||
+    req.usuario?.empresa_id ||
+    null
+  );
 };
 
 const limpiarNombrePlaga = (texto) => {
