@@ -14,31 +14,32 @@ import {
 
 const router = express.Router();
 
+// Solo SuperAdmin puede administrar empresas
 router.get(
   "/",
   verificarToken,
-  permitirRoles("Admin"),
+  permitirRoles("SuperAdmin"),
   getCompanies
 );
 
 router.post(
   "/",
   verificarToken,
-  permitirRoles("Admin"),
+  permitirRoles("SuperAdmin"),
   createCompany
 );
 
 router.put(
   "/:id",
   verificarToken,
-  permitirRoles("Admin"),
+  permitirRoles("SuperAdmin"),
   updateCompany
 );
 
 router.patch(
   "/:id/toggle-status",
   verificarToken,
-  permitirRoles("Admin"),
+  permitirRoles("SuperAdmin"),
   toggleCompanyStatus
 );
 
