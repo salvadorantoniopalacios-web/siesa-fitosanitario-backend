@@ -1,12 +1,7 @@
 import pool from "../config/db.js";
 
 const obtenerCompanyId = (req) => {
-  return (
-    req.usuario?.active_company_id ||
-    req.usuario?.company_id ||
-    req.usuario?.empresa_id ||
-    null
-  );
+  return req.usuario?.company_id || null;
 };
 
 const limpiarNombrePlaga = (texto) => {
@@ -19,154 +14,171 @@ const limpiarNombrePlaga = (texto) => {
   return match ? match[1].trim() : sinNumero;
 };
 
-const existeColumna = async (tabla, columna) => {
-  const result = await pool.query(
-    `
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-    AND table_name = $1
-    AND column_name = $2
-    `,
-    [tabla, columna]
-  );
-
-  return result.rows.length > 0;
-};
-
 export const getDashboardSummary = async (req, res) => {
   try {
     const companyId = obtenerCompanyId(req);
 
-    const farmsTieneCompanyId = await existeColumna("farms", "company_id");
-    const lotsTieneCompanyId = await existeColumna("lots", "company_id");
-    const evaluationsTieneCompanyId = await existeColumna("evaluations", "company_id");
+    if (!companyId) {
+      return res.status(400).json({
+        mensaje: "No se pudo identificar la empresa del usuario.",
+      });
+    }
 
-    const filtroFarms = farmsTieneCompanyId && companyId ? "WHERE company_id = $1" : "";
-    const filtroLots = lotsTieneCompanyId && companyId ? "WHERE company_id = $1" : "";
-    const filtroEvaluations =
-      evaluationsTieneCompanyId && companyId ? "WHERE company_id = $1" : "";
-
-    const paramsFarms = farmsTieneCompanyId && companyId ? [companyId] : [];
-    const paramsLots = lotsTieneCompanyId && companyId ? [companyId] : [];
-    const paramsEvaluations =
-      evaluationsTieneCompanyId && companyId ? [companyId] : [];
-
-    const fincas = await pool.query(
-      `
-      SELECT COUNT(*) AS count
-      FROM farms
-      ${filtroFarms}
-      `,
-      paramsFarms
-    );
-
-    const lotes = await pool.query(
-      `
-      SELECT COUNT(*) AS count
-      FROM lots
-      ${filtroLots}
-      `,
-      paramsLots
-    );
-
-    const evaluaciones = await pool.query(
-      `
-      SELECT COUNT(*) AS count
-      FROM evaluations
-      ${filtroEvaluations}
-      `,
-      paramsEvaluations
-    );
-
-    const alertas = await pool.query(
-      `
-      SELECT COUNT(*) AS count
-      FROM evaluations
-      WHERE nivel_riesgo IN ('Alto', 'Crítico')
-      ${evaluationsTieneCompanyId && companyId ? "AND company_id = $1" : ""}
-      `,
-      paramsEvaluations
-    );
-
-    const evaluacionesPorRiesgo = await pool.query(
+    const evaluacionesResult = await pool.query(
       `
       SELECT 
-        nivel_riesgo,
-        COUNT(*) AS total
-      FROM evaluations
-      ${filtroEvaluations}
-      GROUP BY nivel_riesgo
-      ORDER BY total DESC
-      `,
-      paramsEvaluations
-    );
-
-    const incidenciaPorFinca = await pool.query(
-      `
-      SELECT 
+        evaluations.*,
         farms.nombre AS finca,
-        ROUND(AVG(evaluations.incidencia)::numeric, 2) AS incidencia_promedio,
-        COUNT(evaluations.id) AS total_evaluaciones
-      FROM evaluations
-      JOIN farms ON farms.id = evaluations.farm_id
-      ${evaluationsTieneCompanyId && companyId ? "WHERE evaluations.company_id = $1" : ""}
-      GROUP BY farms.nombre
-      ORDER BY incidencia_promedio DESC
-      LIMIT 10
-      `,
-      paramsEvaluations
-    );
-
-    const tendenciaSemanal = await pool.query(
-      `
-      SELECT 
-        TO_CHAR(DATE_TRUNC('week', fecha), 'YYYY-MM-DD') AS semana,
-        ROUND(AVG(incidencia)::numeric, 2) AS incidencia_promedio,
-        COUNT(*) AS total_evaluaciones
-      FROM evaluations
-      ${filtroEvaluations}
-      GROUP BY DATE_TRUNC('week', fecha)
-      ORDER BY semana ASC
-      LIMIT 12
-      `,
-      paramsEvaluations
-    );
-
-    const topLotesCriticos = await pool.query(
-      `
-      SELECT 
         lots.codigo AS lote,
-        farms.nombre AS finca,
-        lots.cultivo AS cultivo,
-        COUNT(evaluations.id) AS total_alertas,
-        ROUND(AVG(evaluations.incidencia)::numeric, 2) AS incidencia_promedio
+        lots.cultivo AS cultivo
       FROM evaluations
-      JOIN lots ON lots.id = evaluations.lot_id
       JOIN farms ON farms.id = evaluations.farm_id
-      WHERE evaluations.nivel_riesgo IN ('Alto', 'Crítico')
-      ${evaluationsTieneCompanyId && companyId ? "AND evaluations.company_id = $1" : ""}
-      GROUP BY lots.codigo, farms.nombre, lots.cultivo
-      ORDER BY total_alertas DESC, incidencia_promedio DESC
-      LIMIT 10
+      JOIN lots ON lots.id = evaluations.lot_id
+      WHERE evaluations.company_id = $1
+      ORDER BY evaluations.id DESC
       `,
-      paramsEvaluations
+      [companyId]
     );
 
-    const plagasRaw = await pool.query(
+    const fincasResult = await pool.query(
       `
-      SELECT plaga_enfermedad
-      FROM evaluations
-      WHERE plaga_enfermedad IS NOT NULL
-      ${evaluationsTieneCompanyId && companyId ? "AND company_id = $1" : ""}
+      SELECT id, nombre
+      FROM farms
+      WHERE company_id = $1
       `,
-      paramsEvaluations
+      [companyId]
     );
+
+    const lotesResult = await pool.query(
+      `
+      SELECT id, codigo, farm_id, cultivo
+      FROM lots
+      WHERE company_id = $1
+      `,
+      [companyId]
+    );
+
+    const evaluaciones = evaluacionesResult.rows;
+    const fincas = fincasResult.rows;
+    const lotes = lotesResult.rows;
+
+    const alertas = evaluaciones.filter((e) =>
+      ["Alto", "Crítico"].includes(e.nivel_riesgo)
+    );
+
+    const conteoRiesgo = {};
+
+    evaluaciones.forEach((e) => {
+      const riesgo = e.nivel_riesgo || "Sin riesgo";
+      conteoRiesgo[riesgo] = (conteoRiesgo[riesgo] || 0) + 1;
+    });
+
+    const evaluacionesPorRiesgo = Object.entries(conteoRiesgo).map(
+      ([nivel_riesgo, total]) => ({
+        nivel_riesgo,
+        total,
+      })
+    );
+
+    const incidenciaPorFincaMap = {};
+
+    evaluaciones.forEach((e) => {
+      const finca = e.finca || "Sin finca";
+
+      if (!incidenciaPorFincaMap[finca]) {
+        incidenciaPorFincaMap[finca] = {
+          finca,
+          suma: 0,
+          total_evaluaciones: 0,
+        };
+      }
+
+      incidenciaPorFincaMap[finca].suma += Number(e.incidencia || 0);
+      incidenciaPorFincaMap[finca].total_evaluaciones += 1;
+    });
+
+    const incidenciaPorFinca = Object.values(incidenciaPorFincaMap)
+      .map((item) => ({
+        finca: item.finca,
+        incidencia_promedio: Number(
+          (item.suma / item.total_evaluaciones).toFixed(2)
+        ),
+        total_evaluaciones: item.total_evaluaciones,
+      }))
+      .sort((a, b) => b.incidencia_promedio - a.incidencia_promedio)
+      .slice(0, 10);
+
+    const tendenciaMap = {};
+
+    evaluaciones.forEach((e) => {
+      if (!e.fecha) return;
+
+      const fecha = new Date(e.fecha);
+      const dia = fecha.getUTCDay();
+      const diferencia = dia === 0 ? -6 : 1 - dia;
+      fecha.setUTCDate(fecha.getUTCDate() + diferencia);
+
+      const semana = fecha.toISOString().substring(0, 10);
+
+      if (!tendenciaMap[semana]) {
+        tendenciaMap[semana] = {
+          semana,
+          suma: 0,
+          total_evaluaciones: 0,
+        };
+      }
+
+      tendenciaMap[semana].suma += Number(e.incidencia || 0);
+      tendenciaMap[semana].total_evaluaciones += 1;
+    });
+
+    const tendenciaSemanal = Object.values(tendenciaMap)
+      .map((item) => ({
+        semana: item.semana,
+        incidencia_promedio: Number(
+          (item.suma / item.total_evaluaciones).toFixed(2)
+        ),
+        total_evaluaciones: item.total_evaluaciones,
+      }))
+      .sort((a, b) => String(a.semana).localeCompare(String(b.semana)))
+      .slice(-12);
+
+    const lotesCriticosMap = {};
+
+    alertas.forEach((e) => {
+      const key = `${e.lote}-${e.finca}-${e.cultivo}`;
+
+      if (!lotesCriticosMap[key]) {
+        lotesCriticosMap[key] = {
+          lote: e.lote || "-",
+          finca: e.finca || "-",
+          cultivo: e.cultivo || "-",
+          total_alertas: 0,
+          suma: 0,
+        };
+      }
+
+      lotesCriticosMap[key].total_alertas += 1;
+      lotesCriticosMap[key].suma += Number(e.incidencia || 0);
+    });
+
+    const topLotesCriticos = Object.values(lotesCriticosMap)
+      .map((item) => ({
+        lote: item.lote,
+        finca: item.finca,
+        cultivo: item.cultivo,
+        total_alertas: item.total_alertas,
+        incidencia_promedio: Number(
+          (item.suma / item.total_alertas).toFixed(2)
+        ),
+      }))
+      .sort((a, b) => b.total_alertas - a.total_alertas)
+      .slice(0, 10);
 
     const conteoPlagas = {};
 
-    plagasRaw.rows.forEach((row) => {
-      const partes = String(row.plaga_enfermedad || "")
+    evaluaciones.forEach((e) => {
+      const partes = String(e.plaga_enfermedad || "")
         .split("|")
         .map((item) => item.trim())
         .filter(Boolean);
@@ -178,19 +190,22 @@ export const getDashboardSummary = async (req, res) => {
     });
 
     const topPlagas = Object.entries(conteoPlagas)
-      .map(([plaga, total]) => ({ plaga, total }))
+      .map(([plaga, total]) => ({
+        plaga,
+        total,
+      }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
 
     res.json({
-      fincas: Number(fincas.rows[0].count),
-      lotes: Number(lotes.rows[0].count),
-      evaluaciones: Number(evaluaciones.rows[0].count),
-      alertas: Number(alertas.rows[0].count),
-      evaluacionesPorRiesgo: evaluacionesPorRiesgo.rows,
-      incidenciaPorFinca: incidenciaPorFinca.rows,
-      tendenciaSemanal: tendenciaSemanal.rows,
-      topLotesCriticos: topLotesCriticos.rows,
+      fincas: fincas.length,
+      lotes: lotes.length,
+      evaluaciones: evaluaciones.length,
+      alertas: alertas.length,
+      evaluacionesPorRiesgo,
+      incidenciaPorFinca,
+      tendenciaSemanal,
+      topLotesCriticos,
       topPlagas,
     });
   } catch (error) {
