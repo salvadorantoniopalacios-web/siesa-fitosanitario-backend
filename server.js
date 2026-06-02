@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import companyRoutes from "./src/routes/companyRoutes.js";
 import pool from "./src/config/db.js";
+import inventoryRoutes from "./src/routes/inventoryRoutes.js";
 
 import authRoutes from "./src/routes/authRoutes.js";
 import farmRoutes from "./src/routes/farmRoutes.js";
@@ -316,6 +317,7 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/catalog", catalogRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/applications", applicationRoutes);
+app.use("/api/inventory", inventoryRoutes);
 
 const PORT = process.env.PORT || 3000;
 
