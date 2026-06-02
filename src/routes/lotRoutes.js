@@ -5,6 +5,7 @@ import {
   createLot,
   updateLot,
   deleteLot,
+  generateLotPdf,
 } from "../controllers/lotController.js";
 
 import {
@@ -19,6 +20,13 @@ router.get(
   verificarToken,
   permitirRoles("SuperAdmin", "Admin", "Técnico", "Consulta"),
   getLots
+);
+
+router.get(
+  "/:id/report/pdf",
+  verificarToken,
+  permitirRoles("SuperAdmin", "Admin", "Técnico", "Consulta"),
+  generateLotPdf
 );
 
 router.post(
