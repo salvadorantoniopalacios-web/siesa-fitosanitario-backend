@@ -319,6 +319,25 @@ app.use("/api/companies", companyRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/inventory", inventoryRoutes);
 
+app.get("/setup-application-inventory", async (req, res) => {
+  try {
+    await pool.query(`
+      ALTER TABLE applications
+      ADD COLUMN IF NOT EXISTS inventory_product_id INTEGER,
+      ADD COLUMN IF NOT EXISTS cantidad_usada NUMERIC,
+      ADD COLUMN IF NOT EXISTS unidad_inventario VARCHAR(50)
+    `);
+
+    res.json({
+      mensaje: "Aplicaciones enlazadas con inventario correctamente",
+    });
+  } catch (error) {
+    res.status(500).json({
+      mensaje: "Error configurando inventario en aplicaciones",
+      error: error.message,
+    });
+  }
+});
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
