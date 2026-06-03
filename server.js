@@ -93,7 +93,8 @@ app.get("/debug-db-structure", async (req, res) => {
         'users',
         'companies',
         'crops',
-        'pests'
+        'pests',
+        'inventory_products'
       )
       ORDER BY table_name, ordinal_position
     `);
@@ -306,19 +307,11 @@ app.get("/debug-companies-data", async (req, res) => {
   }
 });
 
-app.use("/api/auth", authRoutes);
-app.use("/api/farms", farmRoutes);
-app.use("/api/lots", lotRoutes);
-app.use("/api/evaluations", evaluationRoutes);
-app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/alerts", alertRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/ai", aiRoutes);
-app.use("/api/catalog", catalogRoutes);
-app.use("/api/companies", companyRoutes);
-app.use("/api/applications", applicationRoutes);
-app.use("/api/inventory", inventoryRoutes);
-
+/*
+========================================
+SETUP INVENTARIO EN APLICACIONES
+========================================
+*/
 app.get("/setup-application-inventory", async (req, res) => {
   try {
     await pool.query(`
@@ -338,6 +331,80 @@ app.get("/setup-application-inventory", async (req, res) => {
     });
   }
 });
+
+/*
+========================================
+TRIGGER DESCUENTO INVENTARIO
+========================================
+*/
+app.get("/setup-inventory-discount-trigger", async (req, res) => {
+  try {
+    await pool.query(`
+      ALTER TABLE applications
+      ADD COLUMN IF NOT EXISTS inventory_product_id INTEGER,
+      ADD COLUMN IF NOT EXISTS cantidad_usada NUMERIC,
+      ADD COLUMN IF NOT EXISTS unidad_inventario VARCHAR(50);
+    `);
+
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION descontar_inventario_aplicacion()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NEW.inventory_product_id IS NOT NULL 
+           AND NEW.cantidad_usada IS NOT NULL 
+           AND NEW.cantidad_usada > 0 THEN
+
+          UPDATE inventory_products
+          SET existencia = existencia - NEW.cantidad_usada
+          WHERE id = NEW.inventory_product_id
+          AND company_id = NEW.company_id;
+        END IF;
+
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+
+    await pool.query(`
+      DROP TRIGGER IF EXISTS trg_descontar_inventario_aplicacion ON applications;
+    `);
+
+    await pool.query(`
+      CREATE TRIGGER trg_descontar_inventario_aplicacion
+      AFTER INSERT ON applications
+      FOR EACH ROW
+      EXECUTE FUNCTION descontar_inventario_aplicacion();
+    `);
+
+    res.json({
+      mensaje: "Trigger de descuento de inventario creado correctamente",
+    });
+  } catch (error) {
+    res.status(500).json({
+      mensaje: "Error creando trigger de inventario",
+      error: error.message,
+    });
+  }
+});
+
+/*
+========================================
+RUTAS API
+========================================
+*/
+app.use("/api/auth", authRoutes);
+app.use("/api/farms", farmRoutes);
+app.use("/api/lots", lotRoutes);
+app.use("/api/evaluations", evaluationRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/alerts", alertRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/ai", aiRoutes);
+app.use("/api/catalog", catalogRoutes);
+app.use("/api/companies", companyRoutes);
+app.use("/api/applications", applicationRoutes);
+app.use("/api/inventory", inventoryRoutes);
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
