@@ -386,7 +386,34 @@ app.get("/setup-inventory-discount-trigger", async (req, res) => {
     });
   }
 });
+app.get("/debug-last-application-inventory", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        a.id,
+        a.fecha,
+        a.producto_aplicado,
+        a.inventory_product_id,
+        a.cantidad_usada,
+        a.unidad_inventario,
+        a.company_id,
+        p.nombre AS producto_inventario,
+        p.existencia AS existencia_actual
+      FROM applications a
+      LEFT JOIN inventory_products p 
+        ON p.id = a.inventory_product_id
+      ORDER BY a.id DESC
+      LIMIT 5
+    `);
 
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({
+      mensaje: "Error revisando ultima aplicacion",
+      error: error.message,
+    });
+  }
+});
 /*
 ========================================
 RUTAS API
