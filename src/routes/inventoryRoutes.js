@@ -5,6 +5,9 @@ import {
   createInventoryProduct,
   updateInventoryProduct,
   deleteInventoryProduct,
+  getInventoryBatches,
+  createInventoryBatch,
+  getInventoryMovements,
 } from "../controllers/inventoryController.js";
 
 import {
@@ -13,6 +16,12 @@ import {
 } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+
+/*
+========================================
+PRODUCTOS INVENTARIO
+========================================
+*/
 
 router.get(
   "/",
@@ -40,6 +49,39 @@ router.delete(
   verificarToken,
   permitirRoles("SuperAdmin", "Admin"),
   deleteInventoryProduct
+);
+
+/*
+========================================
+LOTES INVENTARIO
+========================================
+*/
+
+router.get(
+  "/:productId/batches",
+  verificarToken,
+  permitirRoles("SuperAdmin", "Admin", "Técnico", "Consulta"),
+  getInventoryBatches
+);
+
+router.post(
+  "/:productId/batches",
+  verificarToken,
+  permitirRoles("SuperAdmin", "Admin", "Técnico"),
+  createInventoryBatch
+);
+
+/*
+========================================
+MOVIMIENTOS INVENTARIO
+========================================
+*/
+
+router.get(
+  "/:productId/movements",
+  verificarToken,
+  permitirRoles("SuperAdmin", "Admin", "Técnico", "Consulta"),
+  getInventoryMovements
 );
 
 export default router;
