@@ -431,29 +431,7 @@ app.use("/api/catalog", catalogRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/inventory", inventoryRoutes);
-app.get("/debug-inventory-public", async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT 
-        id,
-        company_id,
-        nombre,
-        existencia,
-        unidad,
-        fecha_vencimiento,
-        estado
-      FROM inventory_products
-      ORDER BY id DESC
-    `);
 
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({
-      mensaje: "Error debug inventario",
-      error: error.message,
-    });
-  }
-});
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
