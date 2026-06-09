@@ -52,6 +52,18 @@ const asegurarTablasInventario = async (client) => {
       creado_en TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  await client.query(`
+    ALTER TABLE applications
+    ADD COLUMN IF NOT EXISTS costo_unitario NUMERIC,
+    ADD COLUMN IF NOT EXISTS costo_total NUMERIC
+  `);
+
+  await client.query(`
+    ALTER TABLE inventory_movements
+    ADD COLUMN IF NOT EXISTS costo_unitario NUMERIC,
+    ADD COLUMN IF NOT EXISTS costo_total NUMERIC
+  `);
 };
 
 const consumirInventarioFEFO = async ({
@@ -63,6 +75,9 @@ const consumirInventarioFEFO = async ({
   unidad,
 }) => {
   let pendiente = Number(cantidadUsada);
+  let costoTotalAplicacion = 0;
+  let costoUnitarioPromedio = 0;
+  let cantidadTotalConsumida = 0;
 
   const batches = await client.query(
     `
@@ -95,6 +110,11 @@ const consumirInventarioFEFO = async ({
     const disponible = Number(batch.cantidad_disponible || 0);
     const cantidadARestar = Math.min(disponible, pendiente);
     const nuevaCantidad = disponible - cantidadARestar;
+    const costoUnitario = Number(batch.costo_unitario || 0);
+    const costoTotal = Number((cantidadARestar * costoUnitario).toFixed(4));
+
+    costoTotalAplicacion += costoTotal;
+    cantidadTotalConsumida += cantidadARestar;
 
     await client.query(
       `
@@ -118,9 +138,11 @@ const consumirInventarioFEFO = async ({
         unidad,
         existencia_anterior,
         existencia_nueva,
+        costo_unitario,
+        costo_total,
         descripcion
       )
-      VALUES ($1,$2,$3,$4,'Salida',$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4,'Salida',$5,$6,$7,$8,$9,$10,$11)
       `,
       [
         companyId,
@@ -131,12 +153,35 @@ const consumirInventarioFEFO = async ({
         unidad || batch.unidad || null,
         disponible,
         nuevaCantidad,
+        costoUnitario,
+        costoTotal,
         "Salida por aplicación fitosanitaria FEFO",
       ]
     );
 
     pendiente -= cantidadARestar;
   }
+
+  costoUnitarioPromedio =
+    cantidadTotalConsumida > 0
+      ? Number((costoTotalAplicacion / cantidadTotalConsumida).toFixed(4))
+      : 0;
+
+  await client.query(
+    `
+    UPDATE applications
+    SET costo_unitario = $1,
+        costo_total = $2
+    WHERE id = $3
+    AND company_id = $4
+    `,
+    [
+      costoUnitarioPromedio,
+      Number(costoTotalAplicacion.toFixed(4)),
+      applicationId,
+      companyId,
+    ]
+  );
 };
 
 const devolverInventarioAplicacion = async ({ client, companyId, applicationId }) => {
@@ -371,9 +416,11 @@ export const createApplication = async (req, res) => {
         company_id,
         inventory_product_id,
         cantidad_usada,
-        unidad_inventario
+        unidad_inventario,
+        costo_unitario,
+        costo_total
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,0,0)
       RETURNING *
       `,
       [
@@ -565,7 +612,9 @@ export const updateApplication = async (req, res) => {
         longitud = $16,
         inventory_product_id = $17,
         cantidad_usada = $18,
-        unidad_inventario = $19
+        unidad_inventario = $19,
+        costo_unitario = 0,
+        costo_total = 0
       WHERE id = $20
       AND company_id = $21
       RETURNING *
