@@ -221,7 +221,83 @@ const calcularDashboard = async (companyId) => {
     }))
     .sort((a, b) => b.total - a.total)
     .slice(0, 10);
+    const costosResult = await pool.query(
+    `
+    SELECT
+      COALESCE(SUM(a.costo_total), 0) AS costo_total
+    FROM applications a
+    WHERE a.company_id = $1
+    `,
+    [companyId]
+  );
 
+  const costosPorFincaResult = await pool.query(
+    `
+    SELECT
+      f.nombre AS finca,
+      COALESCE(SUM(a.costo_total), 0) AS costo_total
+    FROM applications a
+    JOIN farms f ON f.id = a.farm_id
+    WHERE a.company_id = $1
+    GROUP BY f.nombre
+    ORDER BY costo_total DESC
+    LIMIT 10
+    `,
+    [companyId]
+  );
+
+  const costosPorLoteResult = await pool.query(
+    `
+    SELECT
+      l.codigo AS lote,
+      f.nombre AS finca,
+      l.cultivo,
+      COALESCE(SUM(a.costo_total), 0) AS costo_total
+    FROM applications a
+    JOIN lots l ON l.id = a.lot_id
+    JOIN farms f ON f.id = a.farm_id
+    WHERE a.company_id = $1
+    GROUP BY l.codigo, f.nombre, l.cultivo
+    ORDER BY costo_total DESC
+    LIMIT 10
+    `,
+    [companyId]
+  );
+
+  const costosPorCultivoResult = await pool.query(
+    `
+    SELECT
+      COALESCE(a.cultivo, 'Sin cultivo') AS cultivo,
+      COALESCE(SUM(a.costo_total), 0) AS costo_total
+    FROM applications a
+    WHERE a.company_id = $1
+    GROUP BY a.cultivo
+    ORDER BY costo_total DESC
+    LIMIT 10
+    `,
+    [companyId]
+  );
+
+  const costoTotalAplicaciones = Number(
+    costosResult.rows[0]?.costo_total || 0
+  );
+
+  const costosPorFinca = costosPorFincaResult.rows.map((item) => ({
+    finca: item.finca,
+    costo_total: Number(item.costo_total || 0),
+  }));
+
+  const costosPorLote = costosPorLoteResult.rows.map((item) => ({
+    lote: item.lote,
+    finca: item.finca,
+    cultivo: item.cultivo,
+    costo_total: Number(item.costo_total || 0),
+  }));
+
+  const costosPorCultivo = costosPorCultivoResult.rows.map((item) => ({
+    cultivo: item.cultivo,
+    costo_total: Number(item.costo_total || 0),
+  }));
   return {
     empresa: empresaResult.rows[0] || null,
     fincas: fincas.length,
@@ -233,6 +309,10 @@ const calcularDashboard = async (companyId) => {
     tendenciaSemanal,
     topLotesCriticos,
     topPlagas,
+    costoTotalAplicaciones,
+    costosPorFinca,
+    costosPorLote,
+    costosPorCultivo,
   };
 };
 
